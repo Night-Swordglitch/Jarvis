@@ -85,6 +85,7 @@ class ApprovalCenter:
         run: Callable[[], str],
         approval_subject: str = "",
         on_approved: Callable[[], None] | None = None,
+        on_rejected: Callable[[str], None] | None = None,
     ) -> str:
         if not isinstance(capability_request, CapabilityRequest):
             raise TypeError("capability_request must be a CapabilityRequest.")
@@ -124,6 +125,8 @@ class ApprovalCenter:
                 if current is not None:
                     current.status = status if status in {"REJECTED", "EXPIRED", "DENIED"} else "DENIED"
                     self._history.append(current)
+            if on_rejected:
+                on_rejected(status)
 
         def approved_run() -> str:
             with self._lock:
