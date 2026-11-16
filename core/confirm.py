@@ -1,38 +1,9 @@
 """
-core/confirm.py — a confirmation the model cannot forge.
+Human confirmation gate for irreversible actions.
 
-THE PROBLEM WITH THE OLD GATE
-    computer_settings guarded shutdown and restart like this:
-
-        confirmed = str(params.get("confirmed", "")).lower()
-        if confirmed not in ("yes", "true", "1", "confirm"):
-            return "Please confirm by calling again with confirmed=yes."
-
-    `confirmed` is a tool parameter, which means the *model* writes it. Nothing
-    stops it from sending confirmed=yes on the first call, and nothing checks
-    that a human was ever involved. It is a convention, not a gate — and its
-    coverage was two actions, so deleting files and switching off the WiFi the
-    assistant is talking over went through with no gate at all.
-
-THE DESIGN HERE
-    The confirmation token is issued by the *interface*, never by the model:
-
-      1. An action calls `request(...)` with a callable that does the real work.
-      2. This module hands the UI a banner with CONFIRM / CANCEL and returns
-         IMMEDIATELY with a sentence for the model to say out loud.
-      3. If — and only if — the user presses CONFIRM, the UI calls `resolve()`,
-         which runs the stored callable off the Qt thread.
-
-    Nothing blocks. The model keeps talking while the banner is up, so this
-    costs no latency at all; in fact it is cheaper than the old gate, which
-    burned two tool round trips (reject, then re-call) on every shutdown.
-
-WHAT BELONGS HERE AND WHAT DOES NOT
-    Only genuinely irreversible things. Anything that can be reversed should be
-    done at once and pushed onto core/undo.py instead — undo is faster than a
-    question, and an assistant that asks before every action is one nobody uses.
+Only the UI's explicit CONFIRM resolution can mint a one-time approval grant.
+Grants are bound to one execution ID and consumed by the trusted execution engine.
 """
-
 from __future__ import annotations
 
 import threading
@@ -40,29 +11,27 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-# A pending confirmation is abandoned after this long. Chosen to outlast a
-# normal "hang on, let me look at the screen" pause without leaving a live
-# shutdown button sitting on the HUD for the rest of the day.
 TIMEOUT_SECONDS = 90.0
 
 
 @dataclass
 class _Pending:
-    key:     str
-    title:   str
-    detail:  str
-    run:     Callable[[], str]
-    at:      float
+    key: str
+    title: str
+    detail: str
+    run: Callable[[], str]
+    at: float
+    approval_subject: str = ""
+    on_rejected: Optional[Callable[[str], None]] = None
 
 
 _pending: Optional[_Pending] = None
 _lock = threading.Lock()
+_approval_grants: dict[str, object] = {}
 
-# Set once at startup by main.py. Signature: (title, detail) -> None for show,
-# and () -> None for hide. Both are marshalled onto the Qt thread by the UI.
 _show_cb: Optional[Callable[[str, str], None]] = None
 _hide_cb: Optional[Callable[[], None]] = None
-_log_cb:  Optional[Callable[[str], None]] = None
+_log_cb: Optional[Callable[[str], None]] = None
 _result_cb: Optional[Callable[[str, str, str], None]] = None
 
 
@@ -80,49 +49,78 @@ def _log(msg: str) -> None:
             pass
 
 
-def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
-    """Park an irreversible action behind the on-screen gate.
+def _reject(pending: _Pending, status: str) -> None:
+    if pending.on_rejected:
+        try:
+            pending.on_rejected(status)
+        except Exception as exc:
+            _log(f"ERR: Approval status callback failed — {exc}")
 
-    Returns the sentence the tool should hand back to the model — phrased as an
-    instruction so the assistant asks the user out loud in their own language,
-    rather than reading an English string verbatim."""
+
+def request(
+    key: str,
+    title: str,
+    detail: str,
+    run: Callable[[], str],
+    *,
+    approval_subject: str = "",
+    on_rejected: Optional[Callable[[str], None]] = None,
+) -> str:
+    """Queue a confirmation; approval_subject binds a grant to one execution."""
     global _pending
 
+    if not callable(run):
+        raise TypeError("run must be callable")
+    if approval_subject and not isinstance(approval_subject, str):
+        raise TypeError("approval_subject must be a string")
+
     if _show_cb is None:
-        # No interface bound (headless, or a very early call). Refuse rather
-        # than silently performing something irreversible.
-        return (f"I cannot confirm '{title}' right now because the interface is "
-                f"not available, so I have not done it.")
+        return (
+            f"I cannot confirm '{title}' because the interface is unavailable; "
+            "nothing was done."
+        )
 
     with _lock:
-        _pending = _Pending(key=key, title=title, detail=detail,
-                            run=run, at=time.monotonic())
+        if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
+            return "There is already a confirmation waiting on screen. Answer it first."
+        expired, _pending = _pending, None
+        _pending = _Pending(
+            key=key, title=title, detail=detail, run=run,
+            at=time.monotonic(), approval_subject=approval_subject,
+            on_rejected=on_rejected,
+        )
+
+    if expired is not None:
+        _reject(expired, "EXPIRED")
 
     try:
         _show_cb(title, detail)
-    except Exception as e:
+    except Exception as exc:
         with _lock:
-            _pending = None
-        return f"Could not ask for confirmation: {e}. Nothing was done."
+            if _pending and _pending.key == key:
+                failed, _pending = _pending, None
+            else:
+                failed = None
+        if failed:
+            _reject(failed, "DENIED")
+        return f"Could not ask for confirmation: {exc}. Nothing was done."
 
     _log(f"SYS: Awaiting confirmation — {title}")
     return (
-        f"[CONFIRMATION_PENDING] I have put a confirmation on screen for: {title}. "
-        f"Say ONE short sentence in the user's own language telling them you need "
-        f"them to confirm it on the HUD before you do it. Do not claim it is done."
+        f"[CONFIRMATION_PENDING] Confirmation is required on the HUD for: {title}. "
+        "Do not claim the action is complete."
     )
 
 
 def resolve(accepted: bool) -> None:
-    """Called by the UI when the user presses CONFIRM or CANCEL.
-
-    Runs the stored callable on a worker thread — this is invoked from the Qt
-    thread, and shutting the machine down from inside a button handler would
-    freeze the interface on its way out."""
+    """Resolve the active HUD prompt; only acceptance issues a one-use grant."""
     global _pending
 
+    if not isinstance(accepted, bool):
+        raise TypeError("accepted must be a boolean")
+
     with _lock:
-        p, _pending = _pending, None
+        pending, _pending = _pending, None
 
     if _hide_cb:
         try:
@@ -130,38 +128,71 @@ def resolve(accepted: bool) -> None:
         except Exception:
             pass
 
-    if p is None:
+    if pending is None:
         return
 
-    if time.monotonic() - p.at > TIMEOUT_SECONDS:
-        _log(f"SYS: Confirmation expired — {p.title}")
+    if time.monotonic() - pending.at > TIMEOUT_SECONDS:
+        _reject(pending, "EXPIRED")
+        _log(f"SYS: Confirmation expired — {pending.title}")
         return
 
     if not accepted:
-        _log(f"SYS: Cancelled — {p.title}")
+        _reject(pending, "REJECTED")
+        _log(f"SYS: Cancelled — {pending.title}")
         return
+
+    if pending.approval_subject:
+        with _lock:
+            # A unique execution ID cannot overwrite an unconsumed grant.
+            if pending.approval_subject in _approval_grants:
+                _reject(pending, "DENIED")
+                _log(f"ERR: Duplicate approval grant refused — {pending.title}")
+                return
+            _approval_grants[pending.approval_subject] = object()
 
     def _worker():
         try:
-            result = p.run() or "Done."
+            result = pending.run() or "Done."
             if _result_cb:
                 try:
-                    _result_cb(p.key, p.title, str(result))
+                    _result_cb(pending.key, pending.title, str(result))
                 except Exception:
                     pass
-            _log(f"SYS: Confirmed — {p.title}. {result}")
-        except Exception as e:
-            _log(f"ERR: {p.title} failed — {e}")
+            _log(f"SYS: Confirmed — {pending.title}. {result}")
+        except Exception as exc:
+            _log(f"ERR: {pending.title} failed — {exc}")
 
-    threading.Thread(target=_worker, daemon=True,
-                     name=f"confirm-{p.key}").start()
+    threading.Thread(
+        target=_worker, daemon=True, name=f"confirm-{pending.key}"
+    ).start()
+
+
+def consume_approval(execution_id: str) -> bool:
+    """Consume the one-time grant issued by a successful human HUD decision."""
+    if not isinstance(execution_id, str) or not execution_id:
+        return False
+    with _lock:
+        return _approval_grants.pop(execution_id, None) is not None
+
+
+def revoke_approval(execution_id: str) -> None:
+    """Discard any unconsumed grant for an execution."""
+    if isinstance(execution_id, str) and execution_id:
+        with _lock:
+            _approval_grants.pop(execution_id, None)
 
 
 def pending_title() -> str:
-    """'' when nothing is waiting. Lets an action avoid stacking two banners."""
+    """Return the active, non-expired confirmation title."""
+    global _pending
     with _lock:
         if _pending is None:
             return ""
         if time.monotonic() - _pending.at > TIMEOUT_SECONDS:
-            return ""
-        return _pending.title
+            expired, _pending = _pending, None
+        else:
+            return _pending.title
+    if expired is not None:
+        _reject(expired, "EXPIRED")
+        _log(f"SYS: Confirmation expired — {expired.title}")
+    return ""
