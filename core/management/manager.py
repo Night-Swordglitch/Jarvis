@@ -171,13 +171,12 @@ class ManagementManager:
             plan = self.state.current_plan
 
         created: list[str] = []
-
-        # First create every task so dependency references can be resolved.
         aliases: dict[str, str] = {}
+        normalized_items: list[tuple[str, dict[str, Any]]] = []
 
+        # Validate every alias and dependency before creating any tasks.
         for index, item in enumerate(plan):
             objective = str(item.get("objective", "")).strip()
-
             if not objective:
                 continue
 
@@ -186,9 +185,34 @@ class ManagementManager:
                 or item.get("name")
                 or f"task_{index + 1}"
             ).strip()
+            if not alias:
+                raise ValueError("Every planned task must have a non-empty alias.")
+            if alias in aliases:
+                raise ValueError(f"Duplicate planned task alias: {alias}")
 
+            aliases[alias] = ""
+            normalized_items.append((alias, item))
+
+        for alias, item in normalized_items:
+            dependencies = item.get("dependencies", []) or []
+            if not isinstance(dependencies, list):
+                raise TypeError(f"Dependencies for task '{alias}' must be a list.")
+            unknown = [
+                str(dep).strip()
+                for dep in dependencies
+                if str(dep).strip() not in aliases
+            ]
+            if unknown:
+                raise ValueError(
+                    f"Task '{alias}' references unknown dependencies: {unknown}"
+                )
+            if alias in [str(dep).strip() for dep in dependencies]:
+                raise ValueError(f"Task '{alias}' cannot depend on itself.")
+
+        # Create all tasks first so every dependency ID can be resolved.
+        for alias, item in normalized_items:
             task = self.task_manager.create_task(
-                objective=objective,
+                objective=str(item["objective"]).strip(),
                 priority=self._priority(item.get("priority", 50)),
                 agent_name=item.get("agent_name"),
                 metadata={
@@ -196,33 +220,37 @@ class ManagementManager:
                     "plan_alias": alias,
                 },
             )
-
             self.dependency_graph.add_task(task.task_id)
-
             aliases[alias] = task.task_id
             created.append(task.task_id)
 
-        # Then connect dependencies.
-        for index, item in enumerate(plan):
-            alias = str(
-                item.get("id")
-                or item.get("name")
-                or f"task_{index + 1}"
-            ).strip()
+        # Keep TaskManager's execution gate and DependencyGraph in sync.
+        # TaskManager checks TaskState.dependencies when starting a task.
+        for alias, item in normalized_items:
+            task_id = aliases[alias]
+            dependency_ids = [
+                aliases[str(dep).strip()]
+                for dep in (item.get("dependencies", []) or [])
+            ]
+            task = self.task_manager.get_task(task_id)
+            if task is None:
+                raise RuntimeError(f"Created task '{task_id}' could not be retrieved.")
 
-            task_id = aliases.get(alias)
+            task.dependencies = list(dependency_ids)
+            for dependency_id in dependency_ids:
+                self.dependency_graph.add_dependency(task_id, dependency_id)
 
-            if not task_id:
-                continue
-
-            for dependency in item.get("dependencies", []) or []:
-                dependency_id = aliases.get(str(dependency).strip())
-
-                if dependency_id:
-                    self.dependency_graph.add_dependency(
-                        task_id,
-                        dependency_id,
-                    )
+            if dependency_ids:
+                self._publish(
+                    "TASK_DEPENDENCIES_LINKED",
+                    {
+                        "mission_id": self._mission.mission_id
+                        if self._mission
+                        else self.state.mission_id,
+                        "task_id": task_id,
+                        "dependencies": list(dependency_ids),
+                    },
+                )
 
         self.state.next_actions = list(created)
 
