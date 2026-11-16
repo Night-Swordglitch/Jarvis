@@ -141,14 +141,18 @@ def resolve(accepted: bool) -> None:
         _log(f"SYS: Cancelled — {pending.title}")
         return
 
+    duplicate_grant = False
     if pending.approval_subject:
         with _lock:
             # A unique execution ID cannot overwrite an unconsumed grant.
             if pending.approval_subject in _approval_grants:
-                _reject(pending, "DENIED")
-                _log(f"ERR: Duplicate approval grant refused — {pending.title}")
-                return
-            _approval_grants[pending.approval_subject] = object()
+                duplicate_grant = True
+            else:
+                _approval_grants[pending.approval_subject] = object()
+        if duplicate_grant:
+            _reject(pending, "DENIED")
+            _log(f"ERR: Duplicate approval grant refused — {pending.title}")
+            return
 
     def _worker():
         try:
