@@ -1,0 +1,60 @@
+﻿# Secrets
+config/api_keys.json
+config/certs/
+config/whatsapp_web/
+**/token*.json
+**/client_secret*.json
+*credentials*.json
+.env
+.env.*
+
+# Personal data
+memory/long_term.json
+memory/*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and runtime data
+*.log
+jarvis_log.txt
+logs/
+downloads/
+screenshots/
+
+# Backups
+*.bak
+*.before-*
+*.phase*-backup
+*.step*-backup
+
+config/certs/
+*.key
+*.pem
+
+bundle*.txt
+*Probe*.txt
+*FidelityTest*.txt
+T[5-7]_*.txt
+*.backup
+*.pre-final-prompt-backup
