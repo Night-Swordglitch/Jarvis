@@ -199,6 +199,10 @@ def test_master_exposes_plan_and_execution_interfaces():
     assert isinstance(plan, MissionPlan)
     result = master.execute_plan(plan)
     assert result["status"] == "COMPLETED"
+    restored = master.load_plan(plan.plan_id)
+    assert restored is not None
+    assert restored.status == "COMPLETED"
+    assert restored.steps[0].status == "COMPLETED"
     assert len(agent.calls) == 1
 
 
