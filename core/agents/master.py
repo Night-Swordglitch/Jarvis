@@ -5,6 +5,8 @@ import json
 from typing import Any
 
 from core.llm_client import call_llm_text
+from core.brain.models import MissionPlan
+from core.brain.planner import GoalPlanner, PlanExecutor
 
 from .base import BaseAgent
 from .dispatcher import AgentDispatcher
@@ -32,9 +34,28 @@ class MasterAgent(BaseAgent):
         self,
         registry: AgentRegistry,
         dispatcher: AgentDispatcher | None = None,
+        goal_planner: GoalPlanner | None = None,
     ) -> None:
         self.registry = registry
         self.dispatcher = dispatcher or AgentDispatcher(registry)
+        self.goal_planner = goal_planner or GoalPlanner(registry)
+        self.plan_executor = PlanExecutor(registry, self.dispatcher)
+
+    def create_plan(
+        self,
+        objective: str,
+        context: dict[str, Any] | None = None,
+    ) -> MissionPlan:
+        """Build a validated dependency-aware plan without executing it."""
+        return self.goal_planner.create_plan(objective, context=context)
+
+    def execute_plan(
+        self,
+        plan: MissionPlan,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Dispatch the plan's specialist analysis steps in dependency order."""
+        return self.plan_executor.execute(plan, context=context)
 
     @property
     def available_agents(self) -> list[str]:
