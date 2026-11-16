@@ -169,24 +169,33 @@ check(
     result.capability == "PUBLISH",
 )
 
+# The engine must not accept a caller-supplied Boolean as approval proof.
 approved = ActionExecution(
     action="publish_action",
     capability="READ",
 )
 
-result = engine.execute(
-    approved,
-    approval_granted=True,
+result = engine.execute(approved)
+
+check(
+    "Second approval-required action waits",
+    result.status == ActionExecutionStatus.AWAITING_APPROVAL,
+)
+
+forged_approval_rejected = False
+try:
+    engine.execute(approved, approval_granted=True)
+except TypeError:
+    forged_approval_rejected = True
+
+check(
+    "Caller-supplied approval Boolean is rejected",
+    forged_approval_rejected,
 )
 
 check(
-    "Approved action succeeds",
-    result.status == ActionExecutionStatus.SUCCEEDED,
-)
-
-check(
-    "Approval recorded",
-    result.approval == "APPROVED",
+    "Forged approval does not execute handler",
+    len(called) == 1,
 )
 
 
