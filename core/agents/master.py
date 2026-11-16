@@ -9,6 +9,7 @@ from core.llm_client import call_llm_text
 from core.brain.models import MissionPlan
 from core.brain.planner import GoalPlanner, PlanExecutor
 from core.brain.store import PlanStore
+from core.events import EventBus
 
 from .base import BaseAgent
 from .dispatcher import AgentDispatcher
@@ -38,6 +39,7 @@ class MasterAgent(BaseAgent):
         dispatcher: AgentDispatcher | None = None,
         goal_planner: GoalPlanner | None = None,
         plan_store: PlanStore | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         self.registry = registry
         self.dispatcher = dispatcher or AgentDispatcher(registry)
@@ -45,8 +47,10 @@ class MasterAgent(BaseAgent):
         self.plan_store = plan_store or PlanStore(
             Path(__file__).resolve().parents[2] / "memory" / "brain_plans.json"
         )
+        self.event_bus = event_bus
         self.plan_executor = PlanExecutor(
-            registry, self.dispatcher, store=self.plan_store
+            registry, self.dispatcher, store=self.plan_store,
+            event_bus=self.event_bus,
         )
 
     def create_plan(
