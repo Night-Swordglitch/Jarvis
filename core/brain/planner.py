@@ -10,7 +10,6 @@ from core.agents.dispatcher import AgentDispatcher
 from core.agents.registry import AgentRegistry
 from core.agents.result import AgentResult
 from core.agents.task import AgentTask
-from core.llm_client import call_llm_text
 
 from .models import MissionPlan, PlanStep
 
@@ -34,7 +33,12 @@ class GoalPlanner:
         if not isinstance(max_steps, int) or not 1 <= max_steps <= 20:
             raise ValueError("max_steps must be between 1 and 20.")
         self.registry = registry
-        self._llm = llm or call_llm_text
+        if llm is None:
+            from core.llm_client import call_llm_text
+            llm = call_llm_text
+        if not callable(llm):
+            raise TypeError("llm must be callable.")
+        self._llm = llm
         self.max_steps = max_steps
 
     def create_plan(
