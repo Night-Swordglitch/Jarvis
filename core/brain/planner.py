@@ -12,6 +12,7 @@ from core.agents.result import AgentResult
 from core.agents.task import AgentTask
 
 from .models import MissionPlan, PlanStep
+from .store import PlanStore
 
 
 class PlanningError(ValueError):
@@ -189,11 +190,15 @@ class PlanExecutor:
         self,
         registry: AgentRegistry,
         dispatcher: AgentDispatcher | None = None,
+        store: PlanStore | None = None,
     ) -> None:
         if not isinstance(registry, AgentRegistry):
             raise TypeError("registry must be an AgentRegistry.")
+        if store is not None and not isinstance(store, PlanStore):
+            raise TypeError("store must be a PlanStore or None.")
         self.registry = registry
         self.dispatcher = dispatcher or AgentDispatcher(registry)
+        self.store = store
 
     def execute(
         self,
@@ -210,6 +215,8 @@ class PlanExecutor:
             raise ValueError("Only a fresh, pending plan can be executed.")
 
         plan.status = "RUNNING"
+        if self.store is not None:
+            self.store.save(plan)
         base_context = deepcopy(context or {})
         results: dict[str, AgentResult] = {}
         remaining = {step.step_id: step for step in plan.steps}
@@ -221,6 +228,8 @@ class PlanExecutor:
                 if any(result is not None and not result.success for result in dependencies):
                     step.status = "BLOCKED"
                     step.error = "A required dependency did not complete successfully."
+                    if self.store is not None:
+                        self.store.save(plan)
                     remaining.pop(step_id)
                     progressed = True
                     continue
@@ -228,6 +237,8 @@ class PlanExecutor:
                     continue
 
                 step.status = "RUNNING"
+                if self.store is not None:
+                    self.store.save(plan)
                 task_context = deepcopy(base_context)
                 task_context["plan_id"] = plan.plan_id
                 task_context["plan_step_id"] = step.step_id
@@ -248,6 +259,8 @@ class PlanExecutor:
                 else:
                     step.status = "FAILED"
                     step.error = "; ".join(result.errors) or result.summary
+                if self.store is not None:
+                    self.store.save(plan)
                 remaining.pop(step_id)
                 progressed = True
 
@@ -261,6 +274,8 @@ class PlanExecutor:
             plan.status = "PARTIAL"
         else:
             plan.status = "FAILED"
+        if self.store is not None:
+            self.store.save(plan)
 
         return {
             "plan_id": plan.plan_id,
