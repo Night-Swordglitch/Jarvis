@@ -11,7 +11,9 @@ from core.execution_engine import ExecutionEngine
 from core.permissions import CapabilityRequest
 
 
-_SENSITIVE_KEY_PARTS = ("password", "token", "secret", "api_key", "credential")
+_SENSITIVE_KEY_PARTS = (
+    "password", "token", "secret", "api_key", "apikey", "credential"
+)
 
 
 def _safe_parameters(value: Any) -> Any:
