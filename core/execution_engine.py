@@ -26,7 +26,7 @@ class ExecutionEngine:
         self._actions = action_registry
         self._capabilities = capability_registry or CapabilityRegistry()
         self._permissions = permission_manager or PermissionManager()
-        self._approval_snapshots: dict[str, tuple[str, dict[str, Any]]] = {}
+        self._approval_snapshots: dict[str, tuple[ActionExecution, str, dict[str, Any]]] = {}
 
     def reject_pending_approval(self, execution: ActionExecution, reason: str) -> None:
         """Close a pending approval without executing its action."""
@@ -86,6 +86,7 @@ class ExecutionEngine:
                     execution.result = "Action parameters could not be safely snapshotted."
                     return execution
                 self._approval_snapshots[execution.execution_id] = (
+                    execution,
                     execution.action,
                     snapshot,
                 )
@@ -102,9 +103,10 @@ class ExecutionEngine:
                     "No active approval snapshot exists for this execution."
                 )
 
-            approved_action, approved_parameters = snapshot
+            approved_execution, approved_action, approved_parameters = snapshot
             if (
-                execution.action != approved_action
+                execution is not approved_execution
+                or execution.action != approved_action
                 or execution.parameters != approved_parameters
             ):
                 confirm.revoke_approval(execution.execution_id)
