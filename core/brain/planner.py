@@ -13,6 +13,7 @@ from core.agents.task import AgentTask
 
 from .models import MissionPlan, PlanStep
 from .store import PlanStore
+from .memory import BrainMemory
 
 
 class PlanningError(ValueError):
@@ -28,6 +29,7 @@ class GoalPlanner:
         *,
         llm: Callable[..., str] | None = None,
         max_steps: int = 20,
+        memory_provider: BrainMemory | None = None,
     ) -> None:
         if not isinstance(registry, AgentRegistry):
             raise TypeError("registry must be an AgentRegistry.")
@@ -41,6 +43,7 @@ class GoalPlanner:
             raise TypeError("llm must be callable.")
         self._llm = llm
         self.max_steps = max_steps
+        self.memory_provider = memory_provider or BrainMemory()
 
     def create_plan(
         self,
@@ -54,6 +57,12 @@ class GoalPlanner:
             raise TypeError("context must be a dictionary.")
 
         safe_context = deepcopy(context or {})
+        try:
+            recalled = self.memory_provider.recall_project_context(objective.strip())
+        except Exception:
+            recalled = []
+        if recalled:
+            safe_context["retrieved_project_memory"] = recalled
         agents = [
             item for item in self.registry.describe()
             if item["name"] != "master"
