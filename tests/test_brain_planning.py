@@ -7,6 +7,7 @@ from core.agents.dispatcher import AgentDispatcher
 from core.agents.registry import AgentRegistry
 from core.agents.result import AgentResult
 from core.agents.task import AgentTask
+from core.agents.master import MasterAgent
 from core.brain import GoalPlanner, MissionPlan, PlanExecutor, PlanStep, PlanningError
 
 
@@ -180,3 +181,22 @@ def test_plan_rejects_self_dependency_and_unknown_dependency():
             objective="Bad plan",
             steps=[PlanStep("one", "Do one", "research_agent", ["missing"])],
         )
+
+
+def test_master_exposes_plan_and_execution_interfaces():
+    agent = RecordingAgent()
+    registry = registry_with_agent(agent)
+    master = MasterAgent(registry)
+    master.goal_planner = GoalPlanner(
+        registry,
+        llm=lambda **_kwargs: (
+            '{"steps":[{"step_id":"inspect","objective":"Inspect the topic",'
+            '"agent_name":"research_agent","depends_on":[]}]}'
+        ),
+    )
+
+    plan = master.create_plan("Inspect the topic")
+    assert isinstance(plan, MissionPlan)
+    result = master.execute_plan(plan)
+    assert result["status"] == "COMPLETED"
+    assert len(agent.calls) == 1
