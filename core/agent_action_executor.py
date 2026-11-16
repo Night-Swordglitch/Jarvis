@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Callable
 
 from core.action_capabilities import capability_for_operation
@@ -54,12 +55,16 @@ class AgentActionExecutor:
                 "context must be an object."
             )
 
-        # Copy the top-level mapping so later caller mutations cannot replace
-        # the parameters after the permission decision has been made.
-        safe_context = dict(context)
+        try:
+            safe_context = deepcopy(context)
+        except Exception:
+            return (
+                f"Agent action '{action}' rejected: "
+                "context could not be safely copied."
+            )
 
-        # Classify both direct actions and operation-specific requests.
-        # Unknown actions fail closed. The agent's capability field is ignored.
+        # Resolve direct actions and operation-specific requests using only
+        # the host registry. Unknown actions fail closed.
         capability = capability_for_operation(action, safe_context)
 
         if capability is None:
