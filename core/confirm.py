@@ -161,6 +161,9 @@ def resolve(accepted: bool) -> None:
             _log(f"SYS: Confirmed — {pending.title}. {result}")
         except Exception as exc:
             _log(f"ERR: {pending.title} failed — {exc}")
+        finally:
+            if pending.approval_subject:
+                revoke_approval(pending.approval_subject)
 
     threading.Thread(
         target=_worker, daemon=True, name=f"confirm-{pending.key}"
