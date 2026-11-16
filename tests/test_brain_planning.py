@@ -8,7 +8,7 @@ from core.agents.registry import AgentRegistry
 from core.agents.result import AgentResult
 from core.agents.task import AgentTask
 from core.agents.master import MasterAgent
-from core.brain import GoalPlanner, MissionPlan, PlanExecutor, PlanStep, PlanStore, PlanningError
+from core.brain import BrainMemory, GoalPlanner, MissionPlan, PlanExecutor, PlanStep, PlanStore, PlanningError
 
 
 class RecordingAgent(BaseAgent):
@@ -220,3 +220,40 @@ def test_plan_store_round_trips_progress_and_removes_records(tmp_path):
     assert store.remove(plan.plan_id) is True
     assert store.get(plan.plan_id) is None
     assert store.remove(plan.plan_id) is False
+
+
+def test_brain_memory_recalls_project_facts_only():
+    memory = BrainMemory(loader=lambda: {
+        "identity": {"name": {"value": "Private Identity"}},
+        "relationships": {"relative": {"value": "Private relationship"}},
+        "projects": {
+            "lunevia_store": {"value": "LUNEVIA storefront uses Printify and USD."},
+            "jarvis": {"value": "MARK-L JARVIS has a specialist agent architecture."},
+        },
+    })
+    results = memory.recall_project_context("Improve the JARVIS agent architecture")
+    assert len(results) == 1
+    assert results[0]["key"] == "jarvis"
+    assert "Private" not in str(results)
+
+
+def test_planner_includes_relevant_project_memory_as_context():
+    registry = registry_with_agent()
+    captured = {}
+    memory = BrainMemory(loader=lambda: {
+        "projects": {
+            "jarvis": {"value": "JARVIS uses a local Ollama model."},
+        }
+    })
+
+    def fake_llm(**kwargs):
+        captured["prompt"] = kwargs["prompt"]
+        return (
+            '{"steps":[{"step_id":"inspect","objective":"Inspect the agent framework",'
+            '"agent_name":"research_agent","depends_on":[]}]}'
+        )
+
+    GoalPlanner(registry, llm=fake_llm, memory_provider=memory).create_plan(
+        "Improve JARVIS agent framework"
+    )
+    assert "JARVIS uses a local Ollama model" in captured["prompt"]
