@@ -23,6 +23,7 @@ jobs:
           python -m pytest -q
           tests/test_agent_action_executor_security.py
           tests/test_execution_approval_security.py
+          tests/test_brain_planning.py
       - name: Run Phase 8D to 8L contract tests
         shell: bash
         run: |
