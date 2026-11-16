@@ -104,9 +104,13 @@ class ExecutionEngine:
                 )
 
             approved_execution, approved_action, approved_parameters = snapshot
+            if execution is not approved_execution:
+                raise ValueError(
+                    "Approval is bound to a different execution object."
+                )
+
             if (
-                execution is not approved_execution
-                or execution.action != approved_action
+                execution.action != approved_action
                 or execution.parameters != approved_parameters
             ):
                 confirm.revoke_approval(execution.execution_id)
