@@ -28,6 +28,17 @@ class ExecutionEngine:
         self._permissions = permission_manager or PermissionManager()
         self._approval_snapshots: dict[str, tuple[str, dict[str, Any]]] = {}
 
+    def reject_pending_approval(self, execution: ActionExecution, reason: str) -> None:
+        """Close a pending approval without executing its action."""
+        if not isinstance(execution, ActionExecution):
+            raise TypeError("execution must be an ActionExecution")
+        if execution.status != ActionExecutionStatus.AWAITING_APPROVAL:
+            return
+        confirm.revoke_approval(execution.execution_id)
+        self._approval_snapshots.pop(execution.execution_id, None)
+        execution.transition(ActionExecutionStatus.REJECTED)
+        execution.result = reason
+
     def execute(
         self,
         execution: ActionExecution,
