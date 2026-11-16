@@ -10,6 +10,7 @@ from core.agents.dispatcher import AgentDispatcher
 from core.agents.registry import AgentRegistry
 from core.agents.result import AgentResult
 from core.agents.task import AgentTask
+from core.events import Event, EventBus
 
 from .models import MissionPlan, PlanStep
 from .store import PlanStore
@@ -200,6 +201,7 @@ class PlanExecutor:
         registry: AgentRegistry,
         dispatcher: AgentDispatcher | None = None,
         store: PlanStore | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         if not isinstance(registry, AgentRegistry):
             raise TypeError("registry must be an AgentRegistry.")
@@ -208,6 +210,14 @@ class PlanExecutor:
         self.registry = registry
         self.dispatcher = dispatcher or AgentDispatcher(registry)
         self.store = store
+        if event_bus is not None and not isinstance(event_bus, EventBus):
+            raise TypeError("event_bus must be an EventBus or None.")
+        self.event_bus = event_bus
+
+    def _publish(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Publish observable plan lifecycle events without granting authority."""
+        if self.event_bus is not None:
+            self.event_bus.publish(Event(event_type, payload))
 
     def execute(
         self,
@@ -226,6 +236,11 @@ class PlanExecutor:
         plan.status = "RUNNING"
         if self.store is not None:
             self.store.save(plan)
+        self._publish("BRAIN_PLAN_STARTED", {
+            "plan_id": plan.plan_id,
+            "objective": plan.objective,
+            "step_count": len(plan.steps),
+        })
         base_context = deepcopy(context or {})
         results: dict[str, AgentResult] = {}
         remaining = {step.step_id: step for step in plan.steps}
@@ -239,6 +254,12 @@ class PlanExecutor:
                     step.error = "A required dependency did not complete successfully."
                     if self.store is not None:
                         self.store.save(plan)
+                    self._publish("BRAIN_STEP_BLOCKED", {
+                        "plan_id": plan.plan_id,
+                        "step_id": step.step_id,
+                        "agent_name": step.agent_name,
+                        "reason": step.error,
+                    })
                     remaining.pop(step_id)
                     progressed = True
                     continue
@@ -248,6 +269,12 @@ class PlanExecutor:
                 step.status = "RUNNING"
                 if self.store is not None:
                     self.store.save(plan)
+                self._publish("BRAIN_STEP_STARTED", {
+                    "plan_id": plan.plan_id,
+                    "step_id": step.step_id,
+                    "agent_name": step.agent_name,
+                    "objective": step.objective,
+                })
                 task_context = deepcopy(base_context)
                 task_context["plan_id"] = plan.plan_id
                 task_context["plan_step_id"] = step.step_id
@@ -270,6 +297,18 @@ class PlanExecutor:
                     step.error = "; ".join(result.errors) or result.summary
                 if self.store is not None:
                     self.store.save(plan)
+                self._publish(
+                    "BRAIN_STEP_COMPLETED" if result.success else "BRAIN_STEP_FAILED",
+                    {
+                        "plan_id": plan.plan_id,
+                        "step_id": step.step_id,
+                        "agent_name": step.agent_name,
+                        "status": step.status,
+                        "error": step.error,
+                        "completed_steps": sum(item.status == "COMPLETED" for item in plan.steps),
+                        "total_steps": len(plan.steps),
+                    },
+                )
                 remaining.pop(step_id)
                 progressed = True
 
@@ -285,6 +324,12 @@ class PlanExecutor:
             plan.status = "FAILED"
         if self.store is not None:
             self.store.save(plan)
+        self._publish("BRAIN_PLAN_FINISHED", {
+            "plan_id": plan.plan_id,
+            "status": plan.status,
+            "completed_steps": sum(item.status == "COMPLETED" for item in plan.steps),
+            "total_steps": len(plan.steps),
+        })
 
         return {
             "plan_id": plan.plan_id,
