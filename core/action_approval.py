@@ -89,15 +89,19 @@ class ActionApprovalIntegration:
                 execution, f"Human approval {status.lower()}."
             )
 
-        return self._approvals.request(
+        response = self._approvals.request(
             mission_id=mission_id,
             task_id=task_id,
             capability_request=request,
             run=approved_run,
             approval_subject=execution.execution_id,
-            on_approved=lambda: None,
             on_rejected=rejected,
         )
+        if not response.startswith("[CONFIRMATION_PENDING]"):
+            self._engine.reject_pending_approval(
+                execution, "Approval could not be queued; action was not executed."
+            )
+        return response
 
     def approval_center(self) -> ApprovalCenter:
         return self._approvals
