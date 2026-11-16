@@ -2,11 +2,13 @@
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 
 from core.llm_client import call_llm_text
 from core.brain.models import MissionPlan
 from core.brain.planner import GoalPlanner, PlanExecutor
+from core.brain.store import PlanStore
 
 from .base import BaseAgent
 from .dispatcher import AgentDispatcher
@@ -35,11 +37,17 @@ class MasterAgent(BaseAgent):
         registry: AgentRegistry,
         dispatcher: AgentDispatcher | None = None,
         goal_planner: GoalPlanner | None = None,
+        plan_store: PlanStore | None = None,
     ) -> None:
         self.registry = registry
         self.dispatcher = dispatcher or AgentDispatcher(registry)
         self.goal_planner = goal_planner or GoalPlanner(registry)
-        self.plan_executor = PlanExecutor(registry, self.dispatcher)
+        self.plan_store = plan_store or PlanStore(
+            Path(__file__).resolve().parents[2] / "memory" / "brain_plans.json"
+        )
+        self.plan_executor = PlanExecutor(
+            registry, self.dispatcher, store=self.plan_store
+        )
 
     def create_plan(
         self,
@@ -56,6 +64,14 @@ class MasterAgent(BaseAgent):
     ) -> dict[str, Any]:
         """Dispatch the plan's specialist analysis steps in dependency order."""
         return self.plan_executor.execute(plan, context=context)
+
+    def load_plan(self, plan_id: str) -> MissionPlan | None:
+        """Load a previously persisted mission plan and its progress."""
+        return self.plan_store.get(plan_id)
+
+    def list_plans(self) -> list[MissionPlan]:
+        """List persisted mission plans, newest records last."""
+        return self.plan_store.all()
 
     @property
     def available_agents(self) -> list[str]:
