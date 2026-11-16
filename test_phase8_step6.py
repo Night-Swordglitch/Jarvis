@@ -203,6 +203,21 @@ check(
     called == [],
 )
 
+check(
+    "Cancellation closes execution as rejected",
+    cancelled.status == ActionExecutionStatus.REJECTED,
+)
+
+check(
+    "Approved request leaves pending projection",
+    len(approvals.pending()) == 0,
+)
+
+check(
+    "Approval history records accepted and rejected decisions",
+    [item.status for item in approvals.history()] == ["APPROVED", "REJECTED"],
+)
+
 
 # ---------------------------------------------------------
 # Authority integrity
