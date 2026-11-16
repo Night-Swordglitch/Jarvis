@@ -8,7 +8,7 @@ from core.agents.registry import AgentRegistry
 from core.agents.result import AgentResult
 from core.agents.task import AgentTask
 from core.agents.master import MasterAgent
-from core.brain import GoalPlanner, MissionPlan, PlanExecutor, PlanStep, PlanningError
+from core.brain import GoalPlanner, MissionPlan, PlanExecutor, PlanStep, PlanStore, PlanningError
 
 
 class RecordingAgent(BaseAgent):
@@ -200,3 +200,19 @@ def test_master_exposes_plan_and_execution_interfaces():
     result = master.execute_plan(plan)
     assert result["status"] == "COMPLETED"
     assert len(agent.calls) == 1
+
+
+def test_plan_store_round_trips_progress_and_removes_records(tmp_path):
+    store = PlanStore(tmp_path / "brain" / "plans.json")
+    plan = MissionPlan(
+        objective="Persist this plan",
+        steps=[PlanStep("inspect", "Inspect source", "research_agent")],
+    )
+    store.save(plan)
+    restored = store.get(plan.plan_id)
+    assert restored is not None
+    assert restored.to_dict() == plan.to_dict()
+    assert len(store) == 1
+    assert store.remove(plan.plan_id) is True
+    assert store.get(plan.plan_id) is None
+    assert store.remove(plan.plan_id) is False
