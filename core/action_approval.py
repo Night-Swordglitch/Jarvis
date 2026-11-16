@@ -85,14 +85,9 @@ class ActionApprovalIntegration:
             return str(execution.result or "Execution finished.")
 
         def rejected(status: str) -> None:
-            if execution.status == ActionExecutionStatus.AWAITING_APPROVAL:
-                target = (
-                    ActionExecutionStatus.REJECTED
-                    if status in {"REJECTED", "EXPIRED", "DENIED"}
-                    else ActionExecutionStatus.REJECTED
-                )
-                execution.transition(target)
-                execution.result = f"Human approval {status.lower()}."
+            self._engine.reject_pending_approval(
+                execution, f"Human approval {status.lower()}."
+            )
 
         return self._approvals.request(
             mission_id=mission_id,
@@ -101,6 +96,7 @@ class ActionApprovalIntegration:
             run=approved_run,
             approval_subject=execution.execution_id,
             on_approved=lambda: None,
+            on_rejected=rejected,
         )
 
     def approval_center(self) -> ApprovalCenter:
