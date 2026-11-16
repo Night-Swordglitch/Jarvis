@@ -151,3 +151,31 @@ def test_approval_detail_redacts_common_secret_fields(approval_system):
 
     assert "[REDACTED]" in shown[0][1]
     assert "do-not-display" not in shown[0][1]
+
+
+def test_approval_cannot_be_transferred_to_another_object(approval_system):
+    engine, _center, integration, _shown, calls = approval_system
+    execution = make_execution()
+    engine.execute(execution)
+    integration.submit(
+        execution, mission_id=execution.mission_id, task_id=execution.task_id
+    )
+
+    forged = ActionExecution(
+        action=execution.action,
+        capability=execution.capability,
+        parameters=dict(execution.parameters),
+        intent=execution.intent,
+        mission_id=execution.mission_id,
+        task_id=execution.task_id,
+        execution_id=execution.execution_id,
+        status=ActionExecutionStatus.AWAITING_APPROVAL,
+    )
+
+    with pytest.raises(ValueError, match="different execution object"):
+        engine.execute(forged)
+
+    assert calls == []
+    confirm.resolve(True)
+    wait_for_status(execution, ActionExecutionStatus.SUCCEEDED)
+    assert len(calls) == 1
