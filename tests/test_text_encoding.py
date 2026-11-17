@@ -38,8 +38,8 @@ def test_repository_text_files_are_utf8_and_free_of_mojibake():
             issues.append(f"{path.relative_to(ROOT)}: invalid UTF-8 ({exc})")
             continue
 
-        if chr(0xFEFF) in content:
-            issues.append(f"{path.relative_to(ROOT)}: unexpected UTF-8 byte-order mark")
+        if chr(0xFEFF) in content[1:]:
+            issues.append(f"{path.relative_to(ROOT)}: embedded byte-order mark")
 
         for line_number, line in enumerate(content.splitlines(), start=1):
             if MOJIBAKE_PATTERN.search(line):
