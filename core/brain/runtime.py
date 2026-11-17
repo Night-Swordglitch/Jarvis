@@ -123,7 +123,10 @@ class BrainMissionRuntime:
             return result.to_dict()
 
         try:
-            scheduler_snapshot = await self.scheduler.run(run_specialist)
+            scheduler_snapshot = await self.scheduler.run(
+                run_specialist,
+                task_ids=set(task_ids),
+            )
             monitor_snapshot = monitor.snapshot()
         finally:
             monitor.unbind_event_bus()
