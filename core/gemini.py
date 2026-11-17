@@ -3,9 +3,9 @@ One place where the assistant's one-shot Gemini calls are made.
 
 WHY THIS EXISTS
     The live conversation runs on the Live API and is not what this file is
-    about. Everything else â€” reading a screenshot, parsing a flight page,
+    about. Everything else — reading a screenshot, parsing a flight page,
     turning a request into a shell command, working out which WhatsApp button
-    answers a call â€” was a separate `genai.Client(...)` built at the point of
+    answers a call — was a separate `genai.Client(...)` built at the point of
     use, with the model name written inline. Sixteen files did it, twenty-six
     times, and not one of them set a timeout.
 
@@ -13,7 +13,7 @@ WHY THIS EXISTS
 
     NO TIMEOUT.  The SDK waits forever by default. `gemini-flash-latest` spent
     an afternoon returning 504 DEADLINE_EXCEEDED, and every one of those calls
-    became an unbounded hang â€” measured at ten seconds of silence while a phone
+    became an unbounded hang — measured at ten seconds of silence while a phone
     rang, and worse elsewhere, because nothing was there to give up.
 
     NO FALLBACK.  One hardcoded alias meant that when that alias was unwell,
@@ -24,7 +24,7 @@ WHY THIS EXISTS
     and hoping none were missed.
 
 THE LIVE MODEL DOES THIS WORK, AND IT LEADS THE LADDER
-    Not the user's conversation â€” a separate, throwaway session per call, so
+    Not the user's conversation — a separate, throwaway session per call, so
     nothing a plugin asks is ever heard by the person at the microphone.
 
     It leads because of quota. This is a voice assistant; the Live API is the
@@ -34,9 +34,9 @@ THE LIVE MODEL DOES THIS WORK, AND IT LEADS THE LADDER
     first means ordinary use stops spending the pool that runs dry.
 
     The reply arrives through output_transcription, because these models refuse
-    response_modalities=["TEXT"] with a 1007 â€” they only speak. That sounds
+    response_modalities=["TEXT"] with a 1007 — they only speak. That sounds
     fatal for structured output and is not: the transcription is the model's own
-    text of what it said, and it returned "Mum â¤ click here for contact info",
+    text of what it said, and it returned "Mum ❤ click here for contact info",
     indented Python inside markdown fences, and src/utils/helpers_v2.py
     character for character.
 
@@ -59,7 +59,7 @@ THE LADDER, MEASURED
     having a bad day.
 
     Where the answer depends only on stable input, cache it and neither pool is
-    touched twice: `plugins/_whatsapp_core.py` is the worked example â€” one
+    touched twice: `plugins/_whatsapp_core.py` is the worked example — one
     request per WhatsApp language for the lifetime of the install.
 """
 from __future__ import annotations
@@ -81,7 +81,7 @@ _KEY_FILE = _BASE / "config" / "api_keys.json"
 # Ladders, tried left to right. Change a model HERE and the whole app follows.
 FAST = "fast"      # short classification, extraction, one-line decisions
 SMART = "smart"    # reasoning, generation, long documents, images
-SEARCH = "search"  # grounded search â€” REST only, see below
+SEARCH = "search"  # grounded search — REST only, see below
 
 # A rung that means "ask the Live model instead", through a short throwaway
 # session rather than the REST text API.
@@ -89,7 +89,7 @@ SEARCH = "search"  # grounded search â€” REST only, see below
 # WHY IT LEADS
 #     This is a voice assistant: the Live API is the dependency it already has,
 #     and it draws on a DIFFERENT quota pool from the text models. On the free
-#     tier the text pool is the one that runs out â€” an afternoon of ordinary use
+#     tier the text pool is the one that runs out — an afternoon of ordinary use
 #     exhausts it, and when it does, every one of these side calls fails and the
 #     feature behind it dies. The Live pool is untouched by that.
 #
@@ -102,15 +102,15 @@ SEARCH = "search"  # grounded search â€” REST only, see below
 #     infinitely faster than REST when REST is out of quota.
 #
 # THE THING WORTH KNOWING
-#     These models only speak â€” response_modalities=["TEXT"] is refused with a
+#     These models only speak — response_modalities=["TEXT"] is refused with a
 #     1007. The reply comes back through output_transcription, which sounds like
 #     it would mangle anything structured. It does not: it is the model's own
-#     text of what it said, and it survived "Mum â¤ click here for contact info",
+#     text of what it said, and it survived "Mum ❤ click here for contact info",
 #     indented Python inside markdown fences, and src/utils/helpers_v2.py
 #     character for character. That is what makes this usable at all.
 #
 #     What it cannot carry is grounding metadata, so grounded web search stays
-#     on REST â€” see SEARCH.
+#     on REST — see SEARCH.
 LIVE = "live"
 
 _LADDERS = {
@@ -129,20 +129,20 @@ _LIVE_FALLBACK = "models/gemini-3.1-flash-live-preview"
 # How many one-shot Live sessions may exist at once.
 #
 # THE USER'S CONVERSATION OUTRANKS EVERY SIDE CALL.
-# Nothing here can reach the microphone or the speaker â€” main.py has exactly one
+# Nothing here can reach the microphone or the speaker — main.py has exactly one
 # `.receive()` and it is bound to its own session, and audio only reaches the
-# speaker through that one loop â€” so a side call cannot answer the user or talk
+# speaker through that one loop — so a side call cannot answer the user or talk
 # over the reply. Verified alongside a live main session: four side calls fired
 # while it was connected, each got its own answer, and the main session replied
 # correctly both before and after with no errors.
 #
 # What a side call CAN do is take up a concurrent-session slot. That is the one
 # way it could hurt the conversation, so it is capped, and a call that cannot
-# get a slot quickly does not queue behind the others â€” it falls to the REST
+# get a slot quickly does not queue behind the others — it falls to the REST
 # rung, which is what the ladder is for.
 # Three, from the measurement: four side calls plus the conversation ran
 # together without complaint, so three leaves the conversation a slot in hand
-# while still covering any burst this app actually produces â€” tool calls run one
+# while still covering any burst this app actually produces — tool calls run one
 # after another, and the screen agent's loop is sequential.
 _LIVE_SLOTS = threading.BoundedSemaphore(3)
 _LIVE_SLOT_WAIT = 3.0
@@ -169,7 +169,7 @@ _cached_key: str | None = None
 
 # A rung that answered 429 is out of quota, and on the free tier it will stay
 # that way for a while. Retrying it on every single call is a wasted round trip
-# in front of every request the assistant makes â€” measured on this key, the
+# in front of every request the assistant makes — measured on this key, the
 # lite rung was 429ing continuously, so every call was paying for it before
 # reaching the model that could actually answer. Remembering that for a few
 # minutes turns the ladder from a cost into a saving.
@@ -273,7 +273,7 @@ async def _live_turn(parts: list, system: str, key: str, timeout_s: float) -> st
     # Silence the persona, or it answers instead of complying.
     #
     # These are conversational models and they behave like it: asked "Reply with
-    # one word: ok" a Live turn came back with "Understood." â€” it treated the
+    # one word: ok" a Live turn came back with "Understood." — it treated the
     # instruction as something to acknowledge rather than something to do. The
     # REST models do not, because nobody ever taught them to be in a
     # conversation. Every call through this module wants a value, not a reply,
@@ -323,7 +323,7 @@ def _live_call(contents, config, timeout_ms: int, key: str):
     a running loop raises. Its own thread has no loop to collide with, wherever
     it was called from.
 
-    Reconnecting costs 0.24s, so nothing is kept alive between calls â€” no
+    Reconnecting costs 0.24s, so nothing is kept alive between calls — no
     session lifetime cap to manage, no GoAway to handle, no shared state.
     """
     system = ""
@@ -338,7 +338,7 @@ def _live_call(contents, config, timeout_ms: int, key: str):
     if not _LIVE_SLOTS.acquire(timeout=_LIVE_SLOT_WAIT):
         # Every slot is busy. Do not wait it out: falling to REST costs less
         # than holding a session the user's conversation might want.
-        raise RuntimeError("no free Live slot â€” leaving them for the conversation")
+        raise RuntimeError("no free Live slot — leaving them for the conversation")
 
     box: dict = {}
 
@@ -366,13 +366,13 @@ def call(contents, tier: str = FAST, config=None,
     """Run one generation, walking the ladder until one answers.
 
     Returns the SDK's own response object, so callers that need more than the
-    text â€” grounding metadata, candidates, usage â€” still get it. Returns None
+    text — grounding metadata, candidates, usage — still get it. Returns None
     when every model on the ladder failed; the reason for each is printed, since
     a silent None during a session nobody can debug is how the original problem
     stayed hidden.
     """
     # `tier` is normally FAST or SMART. Anything else is taken to be an explicit
-    # model name â€” screen_agent lets the user pick one in its settings â€” and it
+    # model name — screen_agent lets the user pick one in its settings — and it
     # is tried first, with the reasoning ladder behind it. So a user's choice is
     # honoured, and a user's choice that is having an outage still degrades to
     # something that answers instead of to nothing.
@@ -404,7 +404,7 @@ def call(contents, tier: str = FAST, config=None,
             msg = str(e)
             if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
                 _cool(model)
-                print(f"[Gemini] {model}: out of quota â€” skipping it for "
+                print(f"[Gemini] {model}: out of quota — skipping it for "
                       f"{_COOLDOWN_SECONDS // 60} minutes")
             else:
                 print(f"[Gemini] {model}: {type(e).__name__}: {msg[:140]}")
