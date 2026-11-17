@@ -73,6 +73,16 @@ class ManagementStateStore:
                 state.blocked_tasks[task.task_id] = task
 
             mission_data = state.metadata.get("mission")
+            if (
+                isinstance(mission_data, dict)
+                and state.status.upper() in {"COMPLETED", "FAILED", "CANCELLED"}
+                and str(mission_data.get("status", "")).upper()
+                not in {"COMPLETED", "FAILED", "CANCELLED"}
+            ):
+                mission_data = dict(mission_data)
+                mission_data["status"] = state.status.upper()
+                state.metadata["mission"] = mission_data
+
             # The persisted top-level status is also authoritative evidence
             # of an interrupted mission. Do not leave an orphaned RUNNING
             # state merely because an older snapshot lacks mission metadata.
