@@ -119,8 +119,14 @@ def test_master_agent_queues_plan_through_bridge_without_dispatching_agents(tmp_
     plan = make_plan()
     management.accept_mission(plan.objective)
     registry = AgentRegistry()
-    registry.register(SimpleNamespace(name="research_agent", description="Research"))
-    registry.register(SimpleNamespace(name="writing_agent", description="Writing"))
+    registry.register(SimpleNamespace(
+        name="research_agent", description="Research",
+        can_handle=lambda _task: True,
+    ))
+    registry.register(SimpleNamespace(
+        name="writing_agent", description="Writing",
+        can_handle=lambda _task: True,
+    ))
     master = MasterAgent(registry, management_bridge=bridge)
 
     task_ids = master.queue_plan(plan)
@@ -139,7 +145,10 @@ def test_master_agent_rejects_unregistered_specialists_before_queueing(tmp_path)
     plan = make_plan()
     management.accept_mission(plan.objective)
     registry = AgentRegistry()
-    registry.register(SimpleNamespace(name="research_agent", description="Research"))
+    registry.register(SimpleNamespace(
+        name="research_agent", description="Research",
+        can_handle=lambda _task: True,
+    ))
     master = MasterAgent(registry, management_bridge=bridge)
 
     with pytest.raises(ValueError, match="unregistered agent"):
