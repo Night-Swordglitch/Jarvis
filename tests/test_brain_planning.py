@@ -186,10 +186,10 @@ def test_plan_rejects_self_dependency_and_unknown_dependency():
         )
 
 
-def test_master_exposes_plan_and_execution_interfaces():
+def test_master_exposes_plan_and_execution_interfaces(tmp_path):
     agent = RecordingAgent()
     registry = registry_with_agent(agent)
-    master = MasterAgent(registry)
+    master = MasterAgent(registry, plan_store=PlanStore(tmp_path / "brain_plans.json"))
     master.goal_planner = GoalPlanner(
         registry,
         llm=lambda **_kwargs: (
