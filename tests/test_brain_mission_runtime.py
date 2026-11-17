@@ -268,10 +268,8 @@ def test_scheduler_shutdown_marks_running_work_cancelled():
 
 
 
-def test_runtime_terminalizes_mission_when_scheduler_aborts():
-    runtime, management, tasks, agent, _store = build_runtime(
-        __import__("pathlib").Path(".")
-    )
+def test_runtime_terminalizes_mission_when_scheduler_aborts(tmp_path):
+    runtime, management, tasks, agent, _store = build_runtime(tmp_path)
 
     async def fail_scheduler(_runner, *, task_ids=None):
         raise RuntimeError("scheduler state mismatch")
