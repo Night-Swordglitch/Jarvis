@@ -58,7 +58,13 @@ def test_restart_marks_interrupted_tasks_terminal_without_resuming(tmp_path):
                 "Task waiting to start",
                 status="QUEUED",
                 metadata={"mission_id": mission.mission_id},
-            )
+            ),
+            "stale-queued": TaskState(
+                "stale-queued",
+                "Task left queued by an older mission",
+                status="QUEUED",
+                metadata={"mission_id": "older-mission"},
+            ),
         },
         completed_tasks={
             "done": TaskState(
@@ -80,6 +86,7 @@ def test_restart_marks_interrupted_tasks_terminal_without_resuming(tmp_path):
     assert restored.failed_tasks["running"].status == "FAILED"
     assert "queued" not in restored.queued_tasks
     assert restored.blocked_tasks["queued"].status == "BLOCKED"
+    assert restored.blocked_tasks["stale-queued"].status == "BLOCKED"
     assert restored.completed_tasks["done"].status == "COMPLETED"
     assert restored.status == "FAILED"
     assert restored.metadata["mission"]["status"] == "FAILED"
@@ -179,3 +186,24 @@ def test_management_manager_restores_failed_mission_and_accepts_new_work(tmp_pat
     assert manager.running is False
     next_mission = manager.accept_mission("A fresh mission")
     assert next_mission.status == "CREATED"
+
+
+
+def test_cyclic_persisted_dependencies_are_contained_without_startup_failure():
+    state = ManagementState(
+        queued_tasks={
+            "first": TaskState(
+                "first", "First", status="QUEUED", dependencies=["second"]
+            ),
+            "second": TaskState(
+                "second", "Second", status="QUEUED", dependencies=["first"]
+            ),
+        }
+    )
+    graph = DependencyGraph()
+
+    ManagementStateStore("unused.json").restore_dependency_graph(state, graph)
+
+    assert graph.has_cycle() is False
+    assert "second" in state.blocked_tasks
+    assert state.metadata["dependency_restore_errors"]
