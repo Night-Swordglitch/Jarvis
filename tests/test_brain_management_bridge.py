@@ -41,6 +41,9 @@ def test_bridge_queues_plan_and_preserves_task_dependency_gate(tmp_path):
     research_id, summary_id = bridge.submit(plan)
 
     assert plan.status == "RUNNING"
+    assert management.state.status == "RUNNING"
+    assert len(management.state.current_plan) == 2
+    assert management.state.to_dict()["current_plan"][0]["id"] == "research"
     assert tasks.get_task(summary_id).dependencies == [research_id]
     assert tasks.get_task(summary_id).metadata["brain_plan_id"] == plan.plan_id
     assert store.get(plan.plan_id).status == "RUNNING"
