@@ -105,3 +105,28 @@ def test_bridge_rejects_reused_or_already_running_plan(tmp_path):
 
     with pytest.raises(ValueError, match="fresh READY"):
         bridge.submit(plan)
+
+
+def test_master_agent_queues_plan_through_bridge_without_dispatching_agents(tmp_path):
+    from core.agents.master import MasterAgent
+    from core.agents.registry import AgentRegistry
+
+    management, tasks, bridge, _store = build_system(tmp_path)
+    plan = make_plan()
+    management.accept_mission(plan.objective)
+    master = MasterAgent(AgentRegistry(), management_bridge=bridge)
+
+    task_ids = master.queue_plan(plan)
+
+    assert len(task_ids) == 2
+    assert all(tasks.get_task(task_id).status == "QUEUED" for task_id in task_ids)
+    assert plan.status == "RUNNING"
+
+
+def test_master_agent_requires_bridge_before_queueing_plan():
+    from core.agents.master import MasterAgent
+    from core.agents.registry import AgentRegistry
+
+    master = MasterAgent(AgentRegistry())
+    with pytest.raises(RuntimeError, match="No BrainManagementBridge"):
+        master.queue_plan(make_plan())
