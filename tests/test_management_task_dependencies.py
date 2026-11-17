@@ -85,6 +85,7 @@ def test_management_decisions_ignore_failed_tasks_from_previous_missions():
     manager.fail_mission("First mission ended unsuccessfully")
 
     manager.accept_mission("A new independent mission")
+    assert state.metadata["mission_history"][0]["mission_id"] == "mission-1"
     new_id = manager.create_planned_tasks([
         {"id": "new", "objective": "New mission work"}
     ])[0]
