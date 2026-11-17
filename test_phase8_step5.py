@@ -43,7 +43,7 @@ capabilities = CapabilityRegistry(
 called = []
 
 
-def test_handler(parameters, **kwargs):
+def action_handler(parameters, **kwargs):
     called.append(parameters)
     return f"Executed: {parameters.get('value')}"
 
@@ -62,7 +62,7 @@ records = {
         name="test_action",
         description="Test execution action",
         parameters={},
-        handler=test_handler,
+        handler=action_handler,
         file="test",
         valid=True,
     ),
