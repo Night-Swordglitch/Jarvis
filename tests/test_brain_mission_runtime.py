@@ -309,3 +309,57 @@ def test_runtime_rejects_a_scheduler_with_a_different_dependency_graph(tmp_path)
 
     with pytest.raises(ValueError, match="share one DependencyGraph"):
         BrainMissionRuntime(runtime.master, management, other_scheduler)
+
+
+def test_saved_recovery_plan_runs_only_after_explicit_resume_request(tmp_path):
+    recovery_plan = MissionPlan(
+        objective="Research then summarize",
+        steps=[
+            PlanStep(
+                "alternate_summary",
+                "Prepare the summary using a different structure",
+                "demo_agent",
+            )
+        ],
+        summary="Alternative summary route.",
+    )
+    runtime, management, tasks, agent, store = build_runtime(
+        tmp_path,
+        fail_on={"Summarize the evidence"},
+        recovery_plan=recovery_plan,
+    )
+
+    first_result = asyncio.run(runtime.run("Research then summarize"))
+    recovery_id = first_result["replan_proposal"]["metadata"]["brain_plan_id"]
+    proposal_record = management.state.metadata["replan_proposals"][recovery_id]
+    assert proposal_record["status"] == "PROPOSED"
+    assert store.get(recovery_id).status == "READY"
+
+    # The test explicitly accepts the saved proposal by calling run_saved_plan.
+    agent.fail_on.clear()
+    resumed_result = asyncio.run(runtime.run_saved_plan(recovery_id))
+
+    assert resumed_result["mission_status"] == "COMPLETED"
+    assert resumed_result["plan"]["status"] == "COMPLETED"
+    assert len(agent.calls) == 3
+    resume_context = agent.calls[-1].context["recovery_context"]
+    assert resume_context["user_approved_resume"] is True
+    assert any(
+        item["objective"] == "Research the subject"
+        for item in resume_context["completed_steps"]
+    )
+    assert tasks.get_task(first_result["task_ids"][0]).status == "COMPLETED"
+    assert store.get(recovery_id).status == "COMPLETED"
+    assert management.state.metadata["replan_proposals"][recovery_id]["status"] == "COMPLETED"
+
+
+def test_saved_plan_cannot_be_run_without_a_proposed_recovery_record(tmp_path):
+    runtime, _management, _tasks, _agent, store = build_runtime(tmp_path)
+    plan = MissionPlan(
+        objective="Research then summarize",
+        steps=[PlanStep("single", "Do safe research", "demo_agent")],
+    )
+    store.save(plan)
+
+    with pytest.raises(ValueError, match="not an unaccepted recovery proposal"):
+        asyncio.run(runtime.run_saved_plan(plan.plan_id))
