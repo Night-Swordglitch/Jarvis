@@ -159,9 +159,6 @@ def test_bridge_restores_plan_event_tracking_from_managed_task_metadata(tmp_path
 
 
 def test_bridge_restore_requires_plan_store():
-    from core.agents.registry import AgentRegistry
-    from core.brain.management_bridge import BrainManagementBridge
-
     state = ManagementState()
     events = EventBus()
     tasks = TaskManager(state, events)
