@@ -363,6 +363,9 @@ def test_saved_recovery_plan_runs_only_after_explicit_resume_request(tmp_path):
     assert store.get(recovery_id).status == "COMPLETED"
     assert management.state.metadata["replan_proposals"][recovery_id]["status"] == "COMPLETED"
 
+    with pytest.raises(ValueError, match="Only a READY saved recovery plan"):
+        asyncio.run(runtime.run_saved_plan(recovery_id))
+
 
 def test_saved_plan_cannot_be_run_without_a_proposed_recovery_record(tmp_path):
     runtime, _management, _tasks, _agent, store = build_runtime(tmp_path)
