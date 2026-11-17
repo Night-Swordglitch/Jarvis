@@ -1,4 +1,4 @@
-﻿from core.management.evidence import EvidenceRecord, EvidenceStore
+from core.management.evidence import EvidenceRecord, EvidenceStore
 from core.management.state import ManagementState, TaskState
 from core.mission_context import MissionContext
 from core.mission_verifier import MissionVerifier, VerificationResult
