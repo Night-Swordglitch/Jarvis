@@ -111,13 +111,19 @@ class ManagementManager:
             raise RuntimeError("A mission is already active")
 
         if self._mission is not None:
-            history = self.state.metadata.setdefault("mission_history", [])
+            history = self.state.metadata.get("mission_history")
+            if not isinstance(history, list):
+                history = []
+                self.state.metadata["mission_history"] = history
             if not any(
                 item.get("mission_id") == self._mission.mission_id
                 for item in history
                 if isinstance(item, dict)
             ):
                 history.append(self._mission.to_dict())
+                # Keep a useful bounded history without allowing the state
+                # snapshot to grow indefinitely during long-running use.
+                del history[:-100]
 
         self._mission = Mission(
             objective=objective,
