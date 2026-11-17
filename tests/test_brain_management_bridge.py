@@ -135,7 +135,7 @@ def test_master_agent_requires_bridge_before_queueing_plan():
         master.queue_plan(make_plan())
 
 
-def test_bridge_restores_plan_event_tracking_from_managed_task_metadata(tmp_path):
+def test_bridge_restores_plan_tracking_from_loaded_task_metadata(tmp_path):
     management, tasks, bridge, store = build_system(tmp_path)
     plan = make_plan()
     management.accept_mission(plan.objective)
