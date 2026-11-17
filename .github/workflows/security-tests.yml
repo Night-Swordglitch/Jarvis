@@ -33,6 +33,13 @@ jobs:
           tests/test_management_task_dependencies.py
           tests/test_brain_management_bridge.py
           tests/test_brain_mission_runtime.py
+      - name: Run Phase 7 mission-management regression tests
+        shell: bash
+        run: |
+          for test_file in test_phase7_step{1..15}.py; do
+            echo "===== $test_file ====="
+            python "$test_file"
+          done
       - name: Run Phase 8D to 8L contract tests
         shell: bash
         run: |
