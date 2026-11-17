@@ -253,7 +253,10 @@ class PlanExecutor:
             progressed = False
             for step_id, step in list(remaining.items()):
                 dependencies = [results.get(dep) for dep in step.depends_on]
-                if any(result is not None and not result.success for result in dependencies):
+                if any(
+                    result is not None and result.status.upper() != "SUCCESS"
+                    for result in dependencies
+                ):
                     step.status = "BLOCKED"
                     step.error = "A required dependency did not complete successfully."
                     if self.store is not None:
@@ -267,7 +270,10 @@ class PlanExecutor:
                     remaining.pop(step_id)
                     progressed = True
                     continue
-                if not all(dep in results and results[dep].success for dep in step.depends_on):
+                if not all(
+                    dep in results and results[dep].status.upper() == "SUCCESS"
+                    for dep in step.depends_on
+                ):
                     continue
 
                 step.status = "RUNNING"
@@ -294,11 +300,15 @@ class PlanExecutor:
                 result = self.dispatcher.dispatch(step.agent_name, task)
                 results[step_id] = result
                 step.result = result.to_dict()
-                if result.success:
+                if result.status.upper() == "SUCCESS":
                     step.status = "COMPLETED"
                 else:
                     step.status = "FAILED"
-                    step.error = "; ".join(result.errors) or result.summary
+                    step.error = (
+                        "; ".join(result.errors)
+                        or result.summary
+                        or f"Agent returned non-final status: {result.status}"
+                    )
                 if self.store is not None:
                     self.store.save(plan)
                 self._publish(
