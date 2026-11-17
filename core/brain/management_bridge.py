@@ -99,6 +99,14 @@ class BrainManagementBridge:
         plan.status = "RUNNING"
         if self.store is not None:
             self.store.save(plan)
+        self.management.event_bus.publish(Event(
+            "BRAIN_PLAN_SUBMITTED",
+            {
+                "mission_id": mission.mission_id,
+                "plan_id": plan.plan_id,
+                "task_ids": list(task_ids),
+            },
+        ))
         return task_ids
 
     def restore_plan(self, plan_id: str) -> MissionPlan | None:
