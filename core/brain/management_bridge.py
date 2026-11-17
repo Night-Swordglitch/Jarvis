@@ -147,7 +147,7 @@ class BrainManagementBridge:
                 self._task_to_step[task_id] = (plan.plan_id, step_id)
                 found.add(step_id)
                 step.status = status_map.get(task.status, step.status)
-                step.result = dict(task.result) if task.result is not None else None
+                step.result = PlanStore._redact(task.result) if task.result is not None else None
                 step.error = task.error
 
         missing = set(step_by_id) - found
@@ -187,7 +187,7 @@ class BrainManagementBridge:
         task = self.management.task_manager.get_task(task_id)
         if task is not None:
             if task.result is not None:
-                step.result = dict(task.result)
+                step.result = PlanStore._redact(task.result)
             if task.error:
                 step.error = task.error
 
