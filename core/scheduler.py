@@ -315,7 +315,11 @@ class Scheduler:
             "running": sorted(self._running),
             "ready": self.dependency_graph.ready_tasks(states),
             "waiting": self.dependency_graph.waiting_tasks(states),
-            "blocked": self.dependency_graph.blocked_tasks(states),
+            "blocked": sorted(
+                task_id
+                for task_id, task in states.items()
+                if task.status.upper() == "BLOCKED"
+            ),
             "cancelled": self._cancel_requested,
             "task_states": {
                 task_id: task.status
