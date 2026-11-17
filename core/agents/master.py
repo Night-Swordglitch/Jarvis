@@ -85,15 +85,22 @@ class MasterAgent(BaseAgent):
             )
         return self.plan_executor.execute(plan, context=context)
 
-    def queue_plan(self, plan: MissionPlan) -> list[str]:
-        """Submit a validated plan to Management without executing agents."""
+    def queue_plan(
+        self,
+        plan: MissionPlan,
+        context: dict[str, Any] | None = None,
+    ) -> list[str]:
+        """Validate and submit a plan to Management without executing agents."""
         if self.management_bridge is None:
             raise RuntimeError(
                 "No BrainManagementBridge is configured for this MasterAgent."
             )
         if not isinstance(plan, MissionPlan):
             raise TypeError("plan must be a MissionPlan.")
+        if context is not None and not isinstance(context, dict):
+            raise TypeError("context must be a dictionary.")
         plan.validate_agents(set(self.available_agents))
+        self.goal_planner._validate_agent_fit(plan, context or {})
         return self.management_bridge.submit(plan)
 
     def load_plan(self, plan_id: str) -> MissionPlan | None:
