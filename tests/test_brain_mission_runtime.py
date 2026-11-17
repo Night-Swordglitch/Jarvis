@@ -234,3 +234,34 @@ def test_synthesis_failure_does_not_mark_completed_tasks_as_a_completed_mission(
     assert result["mission_status"] == "FAILED"
     assert management.mission.status == "FAILED"
     assert result["management_decision"]["decision"] == "BLOCKED"
+
+
+
+def test_scheduler_shutdown_marks_running_work_cancelled():
+    async def scenario():
+        state = ManagementState()
+        events = EventBus()
+        tasks = TaskManager(state, events)
+        graph = DependencyGraph()
+        scheduler = Scheduler(tasks, graph, max_workers=1)
+        task = tasks.create_task("A task interrupted during shutdown")
+        graph.add_task(task.task_id)
+        started = asyncio.Event()
+
+        async def runner(_task):
+            started.set()
+            await asyncio.Event().wait()
+
+        execution = asyncio.create_task(
+            scheduler.run(runner, task_ids={task.task_id})
+        )
+        await asyncio.wait_for(started.wait(), timeout=2)
+        await scheduler.shutdown()
+        snapshot = await asyncio.wait_for(execution, timeout=2)
+
+        restored_task = tasks.get_task(task.task_id)
+        assert restored_task is not None
+        assert restored_task.status == "CANCELLED"
+        assert snapshot["task_states"][task.task_id] == "CANCELLED"
+
+    asyncio.run(scenario())
