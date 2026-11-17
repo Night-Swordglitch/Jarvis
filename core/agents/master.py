@@ -9,6 +9,7 @@ from core.llm_client import call_llm_text
 from core.brain.models import MissionPlan
 from core.brain.planner import GoalPlanner, PlanExecutor
 from core.brain.store import PlanStore
+from core.brain.management_bridge import BrainManagementBridge
 from core.events import EventBus
 
 from .base import BaseAgent
@@ -40,6 +41,7 @@ class MasterAgent(BaseAgent):
         goal_planner: GoalPlanner | None = None,
         plan_store: PlanStore | None = None,
         event_bus: EventBus | None = None,
+        management_bridge: BrainManagementBridge | None = None,
     ) -> None:
         self.registry = registry
         self.dispatcher = dispatcher or AgentDispatcher(registry)
@@ -48,6 +50,11 @@ class MasterAgent(BaseAgent):
             Path(__file__).resolve().parents[2] / "memory" / "brain_plans.json"
         )
         self.event_bus = event_bus
+        if management_bridge is not None and not isinstance(
+            management_bridge, BrainManagementBridge
+        ):
+            raise TypeError("management_bridge must be a BrainManagementBridge or None.")
+        self.management_bridge = management_bridge
         self.plan_executor = PlanExecutor(
             registry, self.dispatcher, store=self.plan_store,
             event_bus=self.event_bus,
@@ -68,6 +75,14 @@ class MasterAgent(BaseAgent):
     ) -> dict[str, Any]:
         """Dispatch the plan's specialist analysis steps in dependency order."""
         return self.plan_executor.execute(plan, context=context)
+
+    def queue_plan(self, plan: MissionPlan) -> list[str]:
+        """Submit a validated plan to Management without executing agents."""
+        if self.management_bridge is None:
+            raise RuntimeError(
+                "No BrainManagementBridge is configured for this MasterAgent."
+            )
+        return self.management_bridge.submit(plan)
 
     def load_plan(self, plan_id: str) -> MissionPlan | None:
         """Load a previously persisted mission plan and its progress."""
