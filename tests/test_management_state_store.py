@@ -222,3 +222,88 @@ def test_orphaned_running_state_is_marked_for_restart_review(tmp_path):
 
     assert restored.status == "FAILED"
     assert restored.metadata["restart_recovery"]["requires_review"] is True
+
+
+def test_restart_reconnects_saved_brain_plan_without_resuming_queued_work(tmp_path):
+    from core.brain import BrainManagementBridge, MissionPlan, PlanStep, PlanStore
+    from core.management.manager import ManagementManager
+    from core.scheduler import Scheduler
+    from core.task_manager import TaskManager
+
+    mission = Mission(
+        objective="Research then summarize",
+        mission_id="mission-brain-restart",
+        status="RUNNING",
+    )
+    plan = MissionPlan(
+        objective=mission.objective,
+        steps=[
+            PlanStep("research", "Research the subject", "research_agent"),
+            PlanStep(
+                "summary",
+                "Summarize the evidence",
+                "writing_agent",
+                depends_on=["research"],
+            ),
+        ],
+        status="RUNNING",
+    )
+    plan_store = PlanStore(tmp_path / "brain-plans.json")
+    plan_store.save(plan)
+
+    state = ManagementState(
+        mission_id=mission.mission_id,
+        objective=mission.objective,
+        status="RUNNING",
+        completed_tasks={
+            "task-research": TaskState(
+                "task-research",
+                "Research the subject",
+                status="COMPLETED",
+                result={"finding": "saved evidence"},
+                metadata={
+                    "mission_id": mission.mission_id,
+                    "brain_plan_id": plan.plan_id,
+                    "brain_step_id": "research",
+                },
+            )
+        },
+        queued_tasks={
+            "task-summary": TaskState(
+                "task-summary",
+                "Summarize the evidence",
+                status="QUEUED",
+                dependencies=["task-research"],
+                metadata={
+                    "mission_id": mission.mission_id,
+                    "brain_plan_id": plan.plan_id,
+                    "brain_step_id": "summary",
+                },
+            )
+        },
+        metadata={"mission": mission.to_dict()},
+    )
+    state_store = ManagementStateStore(tmp_path / "management.json")
+    state_store.save(state)
+
+    restored_state = state_store.load()
+    bus = EventBus()
+    task_manager = TaskManager(restored_state, bus)
+    graph = DependencyGraph()
+    state_store.restore_dependency_graph(restored_state, graph)
+    manager = ManagementManager(restored_state, bus, task_manager, graph)
+    bridge = BrainManagementBridge(manager, plan_store)
+
+    restored_plan = bridge.restore_plan(plan.plan_id)
+
+    assert manager.mission.status == "FAILED"
+    assert manager.running is False
+    assert restored_state.completed_tasks["task-research"].status == "COMPLETED"
+    assert restored_state.blocked_tasks["task-summary"].status == "BLOCKED"
+    assert restored_plan.status == "PARTIAL"
+    assert [step.status for step in restored_plan.steps] == [
+        "COMPLETED",
+        "BLOCKED",
+    ]
+    scheduler = Scheduler(task_manager, graph)
+    assert scheduler.ready_tasks({"task-research", "task-summary"}) == []
