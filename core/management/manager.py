@@ -203,15 +203,35 @@ class ManagementManager:
         if plan is None:
             plan = self.state.current_plan
 
+        if not isinstance(plan, list):
+            raise TypeError("plan must be a list of task dictionaries.")
+        if not plan:
+            raise ValueError("A planned task list cannot be empty.")
+
         created: list[str] = []
         aliases: dict[str, str] = {}
         normalized_items: list[tuple[str, dict[str, Any]]] = []
 
-        # Validate every alias and dependency before creating any tasks.
+        # Validate the complete input before creating any persistent tasks.
+        # Silently dropping malformed steps can make the executed mission
+        # differ from the plan the Brain presented to the user.
         for index, item in enumerate(plan):
-            objective = str(item.get("objective", "")).strip()
-            if not objective:
-                continue
+            if not isinstance(item, dict):
+                raise TypeError(f"Planned task at index {index} must be a dictionary.")
+
+            objective = item.get("objective")
+            if not isinstance(objective, str) or not objective.strip():
+                raise ValueError(
+                    f"Planned task at index {index} needs a non-empty objective."
+                )
+            agent_name = item.get("agent_name")
+            if agent_name is not None and (
+                not isinstance(agent_name, str) or not agent_name.strip()
+            ):
+                raise ValueError(
+                    f"Agent name for planned task at index {index} must be "
+                    "a non-empty string or None."
+                )
 
             alias = str(
                 item.get("id")
