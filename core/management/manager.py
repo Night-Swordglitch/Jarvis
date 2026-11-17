@@ -53,6 +53,7 @@ class ManagementManager:
         dependency_graph: DependencyGraph,
         *,
         planner: Callable[[str], str] | None = None,
+        mission: Mission | None = None,
     ):
         if not isinstance(state, ManagementState):
             raise TypeError("state must be ManagementState")
@@ -66,8 +67,24 @@ class ManagementManager:
         self.dependency_graph = dependency_graph
         self._planner = planner
 
-        self._mission: Mission | None = None
-        self._running = False
+        if mission is not None and not isinstance(mission, Mission):
+            raise TypeError("mission must be a Mission or None.")
+        if mission is None:
+            saved_mission = state.metadata.get("mission")
+            if isinstance(saved_mission, dict):
+                mission = Mission.from_dict(saved_mission)
+
+        if mission is not None and state.mission_id not in {
+            None,
+            mission.mission_id,
+        }:
+            raise ValueError("Restored mission does not match ManagementState.")
+
+        self._mission: Mission | None = mission
+        self._running = bool(
+            mission is not None
+            and mission.status not in {"COMPLETED", "FAILED", "CANCELLED"}
+        )
 
         self.event_bus.subscribe("*", self._on_event)
 
@@ -101,6 +118,7 @@ class ManagementManager:
         self.state.mission_id = self._mission.mission_id
         self.state.objective = objective
         self.state.status = "PLANNING"
+        self.state.metadata["mission"] = self._mission.to_dict()
         self.state.current_plan = []
         self.state.open_questions = []
         self.state.pending_approvals = []
@@ -459,6 +477,7 @@ class ManagementManager:
 
         self._mission.update_status("COMPLETED")
         self.state.status = "COMPLETED"
+        self.state.metadata["mission"] = self._mission.to_dict()
         self._running = False
 
         self._publish(
@@ -486,6 +505,7 @@ class ManagementManager:
 
         self._mission.update_status("FAILED")
         self.state.status = "FAILED"
+        self.state.metadata["mission"] = self._mission.to_dict()
         self._running = False
         self._publish(
             "MISSION_FAILED",
