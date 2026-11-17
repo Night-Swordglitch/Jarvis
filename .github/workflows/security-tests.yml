@@ -16,6 +16,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Compile all Python files
+        run: python -m compileall -q .
       - name: Compile application and Brain runtime
         run: >-
           python -m py_compile main.py
@@ -35,6 +37,7 @@ jobs:
           tests/test_brain_mission_runtime.py
           tests/test_management_state_store.py
           tests/test_llm_keep_alive.py
+          tests/test_text_encoding.py
       - name: Run Phase 7 mission-management regression tests
         shell: bash
         run: |
