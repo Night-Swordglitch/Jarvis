@@ -216,3 +216,19 @@ def test_managed_master_disables_parallel_standalone_plan_execution(tmp_path):
 
     with pytest.raises(RuntimeError, match="Direct plan execution is disabled"):
         master.execute_plan(make_plan())
+
+
+def test_managed_master_disables_parallel_direct_agent_dispatch(tmp_path):
+    import asyncio
+    from core.agents.master import MasterAgent
+    from core.agents.registry import AgentRegistry
+
+    _management, _tasks, bridge, store = build_system(tmp_path)
+    master = MasterAgent(
+        AgentRegistry(),
+        plan_store=store,
+        management_bridge=bridge,
+    )
+
+    with pytest.raises(RuntimeError, match="Direct MasterAgent.run"):
+        asyncio.run(master.run("Do not bypass managed execution"))
