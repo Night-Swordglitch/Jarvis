@@ -1407,6 +1407,28 @@ class JarvisLive:
                     else:
                         report = master_result.summary or "The Master completed without a report."
 
+                    recovery_proposal = mission_result.get("replan_proposal")
+                    if recovery_proposal:
+                        recovery_plan_id = recovery_proposal.get("metadata", {}).get(
+                            "brain_plan_id", "unavailable"
+                        )
+                        report += (
+                            chr(10) + chr(10)
+                            + "RECOVERY PLAN PROPOSAL (NOT EXECUTED):"
+                            + chr(10)
+                            + f"- A revised plan was saved for review: {recovery_plan_id}"
+                            + chr(10)
+                            + "- Completed work was preserved; the proposal was not queued or run."
+                        )
+                    elif mission_result.get("replan_error"):
+                        report += (
+                            chr(10) + chr(10)
+                            + "RECOVERY PLANNING:"
+                            + chr(10)
+                            + "A safe recovery proposal could not be created: "
+                            + str(mission_result["replan_error"])
+                        )
+
                     if action_results:
                         report += (
                             chr(10)
