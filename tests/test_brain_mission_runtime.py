@@ -21,16 +21,25 @@ class DemoAgent(BaseAgent):
     name = "demo_agent"
     description = "Test specialist."
 
-    def __init__(self, fail=False, fail_on=None):
+    def __init__(self, fail=False, fail_on=None, partial_on=None):
         self.calls = []
         self.fail = fail
         self.fail_on = set(fail_on or [])
+        self.partial_on = set(partial_on or [])
 
     def can_handle(self, task):
         return True
 
     def run(self, task: AgentTask):
         self.calls.append(task)
+        if task.objective in self.partial_on:
+            return AgentResult(
+                agent_name=self.name,
+                task_id=task.task_id,
+                status="PARTIAL",
+                summary="Only partial work was completed.",
+                findings=["Partial result."],
+            )
         if self.fail or task.objective in self.fail_on:
             return AgentResult(
                 agent_name=self.name,
@@ -66,7 +75,7 @@ class StaticPlanner:
         return self.plan
 
 
-def build_runtime(tmp_path, *, fail=False, fail_on=None, recovery_plan=None):
+def build_runtime(tmp_path, *, fail=False, fail_on=None, partial_on=None, recovery_plan=None):
     state = ManagementState()
     events = EventBus()
     tasks = TaskManager(state, events)
@@ -76,7 +85,7 @@ def build_runtime(tmp_path, *, fail=False, fail_on=None, recovery_plan=None):
     store = PlanStore(tmp_path / "brain-plans.json")
     bridge = BrainManagementBridge(management, store)
 
-    agent = DemoAgent(fail=fail, fail_on=fail_on)
+    agent = DemoAgent(fail=fail, fail_on=fail_on, partial_on=partial_on)
     registry = AgentRegistry()
     registry.register(agent)
     master = MasterAgent(
@@ -447,3 +456,22 @@ def test_proposed_recovery_plan_can_be_explicitly_resumed_after_restart(tmp_path
     )
     assert plan_store.get(recovery_id).status == "COMPLETED"
     assert restored_state.metadata["replan_proposals"][recovery_id]["status"] == "COMPLETED"
+
+
+
+def test_runtime_does_not_mark_partial_specialist_output_as_completed(tmp_path):
+    runtime, management, tasks, agent, _store = build_runtime(
+        tmp_path,
+        partial_on={"Research the subject"},
+    )
+
+    result = asyncio.run(runtime.run("Research then summarize"))
+
+    assert result["mission_status"] == "FAILED"
+    assert len(agent.calls) == 1
+    first_task = tasks.get_task(result["task_ids"][0])
+    second_task = tasks.get_task(result["task_ids"][1])
+    assert first_task.status == "FAILED"
+    assert second_task.status == "BLOCKED"
+    assert management.mission.status == "FAILED"
+    assert result["actions_executed"] == 0
