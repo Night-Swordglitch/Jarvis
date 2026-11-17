@@ -503,7 +503,9 @@ TOOL_DECLARATIONS = [
             "specialist coordination, dependency-aware execution, and synthesis. "
             "The Brain creates a validated plan; Management and the Scheduler "
             "coordinate managed tasks; specialists return evidence for synthesis. "
-            "Requested actions still pass through the host approval boundary."
+            "Requested actions still pass through the host approval boundary. "
+            "For an explicit user request to resume a saved recovery proposal, "
+            "provide its plan_id instead of a new objective."
         ),
         "parameters": {
             "type": "OBJECT",
@@ -514,10 +516,14 @@ TOOL_DECLARATIONS = [
                 },
                 "context": {
                     "type": "OBJECT",
-                    "description": "Optional structured context relevant to the objective."
+                    "description": "Optional structured context relevant to the objective or resume."
+                },
+                "plan_id": {
+                    "type": "STRING",
+                    "description": "Saved recovery plan ID. Use only when the user explicitly asks to resume that proposal."
                 }
             },
-            "required": ["objective"]
+            "required": []
         }
     },
     {
@@ -1380,18 +1386,29 @@ class JarvisLive:
         try:
             if name == "master_delegate":
                 objective = str(args.get("objective", "")).strip()
+                plan_id = str(args.get("plan_id", "")).strip()
                 context = args.get("context") or {}
 
-                if not objective:
-                    result = "Master delegation requires an objective."
-                else:
+                if plan_id:
+                    print(f"[Master] Explicitly resuming saved recovery plan: {plan_id}")
+                    mission_result = await self._brain_runtime.run_saved_plan(
+                        plan_id=plan_id,
+                        context=context,
+                    )
+                elif objective:
                     print(f"[Master] Objective: {objective}")
-                    print("[Master] Coordinating specialist agents...")
-
                     mission_result = await self._brain_runtime.run(
                         objective=objective,
                         context=context,
                     )
+                else:
+                    result = (
+                        "Master delegation requires an objective, or a plan_id "
+                        "for an explicitly requested saved recovery plan."
+                    )
+
+                if objective or plan_id:
+                    print("[Master] Coordinating specialist agents...")
                     master_result = mission_result["master_result_object"]
                     print(
                         "[Management] Mission "
