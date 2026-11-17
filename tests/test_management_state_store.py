@@ -307,3 +307,24 @@ def test_restart_reconnects_saved_brain_plan_without_resuming_queued_work(tmp_pa
     ]
     scheduler = Scheduler(task_manager, graph)
     assert scheduler.ready_tasks({"task-research", "task-summary"}) == []
+
+
+
+def test_malformed_persisted_dependency_is_blocked_instead_of_crashing():
+    state = ManagementState(
+        queued_tasks={
+            "malformed": TaskState(
+                "malformed",
+                "Task with malformed dependency",
+                status="QUEUED",
+                dependencies=[{"not": "a task id"}],
+            )
+        }
+    )
+    graph = DependencyGraph()
+
+    ManagementStateStore("unused.json").restore_dependency_graph(state, graph)
+
+    assert "malformed" not in state.queued_tasks
+    assert state.blocked_tasks["malformed"].status == "BLOCKED"
+    assert state.metadata["dependency_restore_errors"]
