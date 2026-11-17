@@ -336,7 +336,7 @@ class ManagementManager:
                 user_update="The mission is blocked by unresolved tasks.",
             )
 
-        completed = list(self.state.completed_tasks)
+        completed = mission_tasks(self.state.completed_tasks)
 
         if completed:
             return self._decision(
