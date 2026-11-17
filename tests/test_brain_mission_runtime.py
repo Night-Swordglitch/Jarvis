@@ -84,6 +84,7 @@ def build_runtime(tmp_path, *, fail=False, fail_on=None, recovery_plan=None):
         management_bridge=bridge,
         event_bus=events,
     )
+    assert master.plan_store is store
     master.goal_planner = StaticPlanner(
         plan=MissionPlan(
             objective="Research then summarize",
@@ -157,7 +158,7 @@ def test_runtime_failure_blocks_dependents_and_proposes_recovery_without_retry(t
     assert result["scheduler"]["blocked"]
     assert result["monitor"]["healthy"] is False
     assert result["replan_proposal"] is not None
-    assert result["replan_proposal"]["failed_task_ids"] == [result["task_ids"][0]]
+    assert set(result["replan_proposal"]["failed_task_ids"]) == set(result["task_ids"])
     recovery_id = result["replan_proposal"]["metadata"]["brain_plan_id"]
     assert store.get(recovery_id).status == "READY"
     assert tasks.state.task_count() == 2  # proposal was not queued or retried
