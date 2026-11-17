@@ -235,7 +235,11 @@ class Scheduler:
             )
 
         except asyncio.CancelledError:
-            # Scheduler shutdown/cancellation owns this path.
+            # A cancelled worker must not remain RUNNING in durable state.
+            # TaskManager owns the transition and emits the lifecycle event.
+            task = self.task_manager.get_task(task_id)
+            if task is not None and task.status in {"RUNNING", "QUEUED", "BLOCKED"}:
+                self.task_manager.cancel_task(task_id)
             raise
 
         except Exception as exc:
