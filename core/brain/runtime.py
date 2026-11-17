@@ -17,6 +17,7 @@ from core.agents.result import AgentResult
 from core.agents.task import AgentTask
 from core.events import Event
 from core.management.manager import ManagementManager
+from core.management.state_store import ManagementStateStore
 from core.scheduler import Scheduler
 from core.mission_monitor import MissionMonitor
 from core.mission_replanner import ReplanningEngine
@@ -110,7 +111,7 @@ class BrainMissionRuntime:
             raise ValueError("Recovery proposal has no source mission.")
 
         completed_work = [
-            task.to_dict()
+            ManagementStateStore._redact(task.to_dict())
             for task in self.task_manager.state.completed_tasks.values()
             if task.metadata.get("mission_id") == previous_mission_id
         ]
@@ -262,7 +263,9 @@ class BrainMissionRuntime:
                     "task_id": task_id,
                 }
                 if task.status == "COMPLETED":
-                    record["result"] = dict(task.result or {})
+                    record["result"] = ManagementStateStore._redact(
+                        dict(task.result or {})
+                    )
                     completed_steps.append(record)
                 elif task.status == "FAILED":
                     record["error"] = task.error
