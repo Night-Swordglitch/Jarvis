@@ -154,3 +154,28 @@ def test_missing_persisted_dependency_blocks_task_safely():
 
     assert "orphan" not in state.queued_tasks
     assert state.blocked_tasks["orphan"].status == "BLOCKED"
+
+
+def test_management_manager_restores_failed_mission_and_accepts_new_work(tmp_path):
+    from core.management.manager import ManagementManager
+    from core.task_manager import TaskManager
+
+    mission = Mission(
+        objective="Interrupted mission",
+        mission_id="mission-restored",
+        status="FAILED",
+    )
+    state = ManagementState(
+        mission_id=mission.mission_id,
+        objective=mission.objective,
+        status="FAILED",
+        metadata={"mission": mission.to_dict()},
+    )
+    bus = EventBus()
+    tasks = TaskManager(state, bus)
+    manager = ManagementManager(state, bus, tasks, DependencyGraph())
+
+    assert manager.mission.mission_id == mission.mission_id
+    assert manager.running is False
+    next_mission = manager.accept_mission("A fresh mission")
+    assert next_mission.status == "CREATED"
