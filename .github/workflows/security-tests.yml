@@ -24,8 +24,10 @@ jobs:
           core/brain/*.py
           core/management/manager.py
           core/scheduler.py
-      - name: Install test runner
-        run: python -m pip install --upgrade pytest requests
+      - name: Install test and lint tools
+        run: python -m pip install --upgrade pytest requests ruff
+      - name: Check critical Python issues
+        run: ruff check --select E9,F63,F7,F82 .
       - name: Run focused security regression tests
         run: >-
           python -m pytest -q
