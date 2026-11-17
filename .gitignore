@@ -10,8 +10,8 @@ config/whatsapp_web/
 
 # Personal data
 memory/long_term.json
-memory/brain_plans.json
-memory/management_state.json
+memory/brain_plans.json*
+memory/management_state.json*
 memory/*.db
 
 # Python
