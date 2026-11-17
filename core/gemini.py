@@ -1,4 +1,4 @@
-﻿"""
+"""
 One place where the assistant's one-shot Gemini calls are made.
 
 WHY THIS EXISTS
