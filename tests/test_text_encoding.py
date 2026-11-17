@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +23,17 @@ def test_repository_text_files_are_utf8_and_free_of_mojibake():
     """Catch common encoding damage before it reaches the default branch."""
     issues = []
 
-    for path in ROOT.rglob("*"):
+    tracked_paths = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout.split(b"\x00")
+
+    for relative_path in tracked_paths:
+        if not relative_path:
+            continue
+        path = ROOT / relative_path.decode("utf-8")
         if not path.is_file() or any(part in SKIP_DIRS for part in path.parts):
             continue
         if path.suffix.lower() in BINARY_SUFFIXES:
