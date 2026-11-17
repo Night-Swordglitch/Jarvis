@@ -44,7 +44,7 @@ class DemoAgent(BaseAgent):
             task_id=task.task_id,
             status="SUCCESS",
             summary=f"Completed: {task.objective}",
-            data={"objective": task.objective},
+            data={"objective": task.objective, "api_key": "test-secret"},
             actions_requested=[{
                 "action": "send_message",
                 "parameters": {"text": "draft only"},
@@ -345,10 +345,11 @@ def test_saved_recovery_plan_runs_only_after_explicit_resume_request(tmp_path):
     assert len(agent.calls) == 3
     resume_context = agent.calls[-1].context["recovery_context"]
     assert resume_context["user_approved_resume"] is True
-    assert any(
-        item["objective"] == "Research the subject"
-        for item in resume_context["completed_steps"]
+    completed_research = next(
+        item for item in resume_context["completed_steps"]
+        if item["objective"] == "Research the subject"
     )
+    assert completed_research["result"]["data"]["api_key"] == "[REDACTED]"
     assert tasks.get_task(first_result["task_ids"][0]).status == "COMPLETED"
     assert store.get(recovery_id).status == "COMPLETED"
     assert management.state.metadata["replan_proposals"][recovery_id]["status"] == "COMPLETED"
