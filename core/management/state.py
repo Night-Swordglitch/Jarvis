@@ -48,7 +48,7 @@ class ManagementState:
     completed_tasks: dict[str, TaskState] = field(default_factory=dict)
     failed_tasks: dict[str, TaskState] = field(default_factory=dict)
 
-    current_plan: dict[str, Any] = field(default_factory=dict)
+    current_plan: list[dict[str, Any]] = field(default_factory=list)
 
     recent_events: list[dict[str, Any]] = field(default_factory=list)
     open_questions: list[str] = field(default_factory=list)
@@ -118,7 +118,10 @@ class ManagementState:
                 key: value.to_dict()
                 for key, value in self.failed_tasks.items()
             },
-            "current_plan": dict(self.current_plan),
+            "current_plan": [
+                dict(item) if isinstance(item, dict) else item
+                for item in self.current_plan
+            ],
             "recent_events": list(self.recent_events),
             "open_questions": list(self.open_questions),
             "pending_approvals": list(self.pending_approvals),
