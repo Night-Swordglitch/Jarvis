@@ -218,6 +218,11 @@ class ManagementManager:
                 metadata={
                     "management_manager": True,
                     "plan_alias": alias,
+                    "mission_id": (
+                        self._mission.mission_id
+                        if self._mission is not None
+                        else self.state.mission_id
+                    ),
                 },
             )
             self.dependency_graph.add_task(task.task_id)
@@ -297,22 +302,27 @@ class ManagementManager:
                 user_update="A human approval is required before continuing.",
             )
 
-        failed = list(self.state.failed_tasks)
+        mission_id = self._mission.mission_id
 
+        def mission_tasks(group: dict[str, Any]) -> list[Any]:
+            return [
+                task for task in group.values()
+                if task.metadata.get("mission_id") == mission_id
+            ]
+
+        failed = mission_tasks(self.state.failed_tasks)
         if failed:
             return self._decision(
                 "REPLAN",
                 user_update="A task failed. I am evaluating a revised plan.",
                 metadata={
-                    "failed_tasks": [
-                        task_id for task_id in failed
-                    ]
+                    "failed_tasks": [task.task_id for task in failed]
                 },
             )
 
-        active = list(self.state.active_tasks)
-        queued = list(self.state.queued_tasks)
-        blocked = list(self.state.blocked_tasks)
+        active = mission_tasks(self.state.active_tasks)
+        queued = mission_tasks(self.state.queued_tasks)
+        blocked = mission_tasks(self.state.blocked_tasks)
 
         if active or queued:
             return self._decision(
@@ -447,7 +457,7 @@ class ManagementManager:
                 user_update="Cannot complete a mission that does not exist.",
             )
 
-        self._mission.status = "COMPLETED"
+        self._mission.update_status("COMPLETED")
         self.state.status = "COMPLETED"
         self._running = False
 
@@ -461,6 +471,33 @@ class ManagementManager:
         return self._decision(
             "COMPLETE",
             user_update="Mission completed.",
+        )
+
+    def fail_mission(self, reason: str) -> ManagementDecision:
+        """Mark the active mission failed without retrying or executing work."""
+        reason = str(reason).strip()
+        if not reason:
+            raise ValueError("Failure reason cannot be empty.")
+        if self._mission is None:
+            return self._decision(
+                "BLOCKED",
+                user_update="Cannot fail a mission that does not exist.",
+            )
+
+        self._mission.update_status("FAILED")
+        self.state.status = "FAILED"
+        self._running = False
+        self._publish(
+            "MISSION_FAILED",
+            {
+                "mission_id": self._mission.mission_id,
+                "reason": reason,
+            },
+        )
+        return self._decision(
+            "BLOCKED",
+            user_update=reason,
+            metadata={"mission_id": self._mission.mission_id},
         )
 
     # ------------------------------------------------------------------
