@@ -1,8 +1,8 @@
-﻿import platform as _platform
+import platform as _platform
 import subprocess as _subprocess
 
-# ── Nuclear: force CREATE_NO_WINDOW on EVERY subprocess call on Windows ───────
-# This patches Popen itself, so no per-file flag is needed anywhere.
+# Ensure subprocesses do not open visible console windows on Windows.
+# Apply this centrally so individual actions do not need to repeat the setting.
 if _platform.system() == "Windows":
     _OrigPopen = _subprocess.Popen
 
@@ -10,7 +10,7 @@ if _platform.system() == "Windows":
         def __init__(self, args, **kw):
             kw["creationflags"] = kw.get("creationflags", 0) | _subprocess.CREATE_NO_WINDOW
             kw.pop("startupinfo", None)   # drop any stale/shared STARTUPINFO
-            super().__init__(args, **                       kw)
+            super().__init__(args, **kw)
 
     _subprocess.Popen = _Popen
 
