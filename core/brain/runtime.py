@@ -17,6 +17,8 @@ from core.agents.result import AgentResult
 from core.agents.task import AgentTask
 from core.management.manager import ManagementManager
 from core.scheduler import Scheduler
+from core.mission_monitor import MissionMonitor
+from core.mission_replanner import ReplanningEngine
 
 
 class BrainMissionRuntime:
@@ -72,6 +74,11 @@ class BrainMissionRuntime:
             )
             raise
 
+        monitor = MissionMonitor(mission.mission_id)
+        monitor.bind_event_bus(self.management.event_bus)
+        for task_id in task_ids:
+            monitor.track_task(task_id)
+
         results_by_task: dict[str, AgentResult] = {}
 
         async def run_specialist(task: Any) -> dict[str, Any]:
@@ -116,6 +123,115 @@ class BrainMissionRuntime:
             return result.to_dict()
 
         scheduler_snapshot = await self.scheduler.run(run_specialist)
+        monitor_snapshot = monitor.snapshot()
+        monitor.unbind_event_bus()
+
+        # A failure produces a persisted proposal only. It is not queued,
+        # retried, or executed automatically. Completed work is supplied as
+        # immutable context so the planner can focus on recovery gaps.
+        replan_proposal: dict[str, Any] | None = None
+        replan_error: str | None = None
+        if not monitor_snapshot["healthy"]:
+            completed_steps: list[dict[str, Any]] = []
+            failed_steps: list[dict[str, Any]] = []
+            blocked_steps: list[dict[str, Any]] = []
+            for step, task_id in zip(plan.steps, task_ids):
+                task = self.task_manager.get_task(task_id)
+                if task is None:
+                    continue
+                record = {
+                    "step_id": step.step_id,
+                    "objective": step.objective,
+                    "agent_name": step.agent_name,
+                    "task_id": task_id,
+                }
+                if task.status == "COMPLETED":
+                    record["result"] = dict(task.result or {})
+                    completed_steps.append(record)
+                elif task.status == "FAILED":
+                    record["error"] = task.error
+                    failed_steps.append(record)
+                elif task.status in {"BLOCKED", "CANCELLED"}:
+                    record["error"] = task.error
+                    blocked_steps.append(record)
+
+            generated: dict[str, Any] = {}
+
+            def create_recovery_plan(
+                recovery_objective: str,
+                replanning_context: dict[str, Any],
+            ) -> list[dict[str, Any]]:
+                recovery_context = deepcopy(base_context)
+                recovery_context["recovery_context"] = {
+                    "mission_id": mission.mission_id,
+                    "completed_steps": completed_steps,
+                    "failed_steps": failed_steps,
+                    "blocked_steps": blocked_steps,
+                    "do_not_repeat_completed_work": True,
+                    "avoid_repeating_failed_steps_verbatim": True,
+                }
+                recovery_context["replanning_context"] = replanning_context
+                recovery_plan = self.master.create_plan(
+                    recovery_objective,
+                    recovery_context,
+                )
+                completed_objectives = {
+                    item["objective"].strip().casefold()
+                    for item in completed_steps
+                }
+                failed_objectives = {
+                    item["objective"].strip().casefold()
+                    for item in failed_steps
+                }
+                repeated = [
+                    step.objective
+                    for step in recovery_plan.steps
+                    if step.objective.strip().casefold() in (
+                        completed_objectives | failed_objectives
+                    )
+                ]
+                if repeated:
+                    raise ValueError(
+                        "Recovery plan repeated completed or failed work: "
+                        + ", ".join(repeated)
+                    )
+                generated["plan"] = recovery_plan
+                return [
+                    {
+                        "objective": step.objective,
+                        "priority": step.priority,
+                        "agent_name": step.agent_name,
+                        "dependencies": list(step.depends_on),
+                    }
+                    for step in recovery_plan.steps
+                ]
+
+            try:
+                engine = ReplanningEngine(planner=create_recovery_plan)
+                proposal = engine.propose(
+                    mission_id=mission.mission_id,
+                    objective=objective,
+                    monitor_snapshot=monitor_snapshot,
+                    current_plan=[
+                        {
+                            "step_id": step.step_id,
+                            "objective": step.objective,
+                            "agent_name": step.agent_name,
+                        }
+                        for step in plan.steps
+                    ],
+                )
+                recovery_plan = generated.get("plan")
+                if proposal is not None and recovery_plan is not None:
+                    proposal.metadata["brain_plan_id"] = recovery_plan.plan_id
+                    proposal.metadata["brain_plan_summary"] = recovery_plan.summary
+                    proposal.metadata["preserved_completed_steps"] = [
+                        item["step_id"] for item in completed_steps
+                    ]
+                    self.master.plan_store.save(recovery_plan)
+                    replan_proposal = proposal.to_dict()
+            except Exception as exc:
+                replan_error = str(exc)
 
         ordered_results: list[AgentResult] = []
         for step, task_id in zip(plan.steps, task_ids):
@@ -174,6 +290,9 @@ class BrainMissionRuntime:
             "plan": plan.to_dict(),
             "task_ids": list(task_ids),
             "scheduler": scheduler_snapshot,
+            "monitor": monitor_snapshot,
+            "replan_proposal": replan_proposal,
+            "replan_error": replan_error,
             "management_review": review_decision.to_dict(),
             "management_decision": decision.to_dict(),
             "master_result": master_result.to_dict(),
