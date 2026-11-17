@@ -182,7 +182,9 @@ class BrainMissionRuntime:
                     raise RuntimeError(
                         f"Dependency '{dependency_id}' is not completed."
                     )
-                dependency_results[dependency_id] = dict(dependency.result or {})
+                dependency_results[dependency_id] = ManagementStateStore._redact(
+                    dict(dependency.result or {})
+                )
 
             task_context = deepcopy(base_context)
             task_context.update({
