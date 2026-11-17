@@ -1,4 +1,4 @@
-﻿"""Phase 8E — Execution Engine contract test."""
+"""Phase 8E — Execution Engine contract test."""
 
 from core.action_execution import ActionExecution, ActionExecutionStatus
 from core.action_loader import ActionRecord, ActionRegistry
