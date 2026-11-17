@@ -81,7 +81,8 @@ class ProactiveEngine:
         elif focus_index == 1:
             focus = (
                 "Focus on the time of day and the user's wellbeing. "
-                "A warm check-in, a reminder to take a break, or something timely."
+                "Offer a brief, optional check-in or a timely observation. "
+                "Do not tell the user to stop working or take a break unless they ask."
             )
         else:
             focus = (
