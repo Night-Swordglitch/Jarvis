@@ -11,6 +11,7 @@ from core.agents.result import AgentResult
 from core.agents.task import AgentTask
 from core.agents.master import MasterAgent
 from core.brain import BrainMemory, GoalPlanner, MissionPlan, PlanExecutor, PlanStep, PlanStore, PlanningError
+from core.events.bus import EventBus
 
 
 class RecordingAgent(BaseAgent):
@@ -302,6 +303,9 @@ def test_partial_agent_result_does_not_complete_or_unlock_dependent_step():
 
     agent = PartialAgent()
     registry = registry_with_agent(agent)
+    events = EventBus()
+    observed = []
+    events.subscribe("*", lambda event: observed.append(event.event_type))
     plan = MissionPlan(
         objective="Complete both steps",
         steps=[
@@ -315,8 +319,10 @@ def test_partial_agent_result_does_not_complete_or_unlock_dependent_step():
         ],
     )
 
-    result = PlanExecutor(registry).execute(plan)
+    result = PlanExecutor(registry, event_bus=events).execute(plan)
 
+    assert "BRAIN_STEP_FAILED" in observed
+    assert "BRAIN_STEP_COMPLETED" not in observed
     assert plan.steps[1].status == "FAILED"
     assert plan.steps[0].status == "BLOCKED"
     assert len(agent.calls) == 1
