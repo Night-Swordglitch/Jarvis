@@ -265,6 +265,7 @@ class TaskManager:
                 f"status '{task.status}'."
             )
 
+        previous_status = task.status
         self._remove_from_all_groups(task_id)
 
         task.status = "CANCELLED"
@@ -275,7 +276,7 @@ class TaskManager:
             "TASK_CANCELLED",
             {
                 "task_id": task_id,
-                "previous_status": "RUNNING",
+                "previous_status": previous_status,
             },
         )
 
