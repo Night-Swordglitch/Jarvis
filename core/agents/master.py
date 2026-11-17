@@ -100,7 +100,19 @@ class MasterAgent(BaseAgent):
         if context is not None and not isinstance(context, dict):
             raise TypeError("context must be a dictionary.")
         plan.validate_agents(set(self.available_agents))
-        self.goal_planner._validate_agent_fit(plan, context or {})
+        validation_context = dict(context or {})
+        for step in plan.steps:
+            agent = self.registry.get(step.agent_name)
+            task = AgentTask(
+                objective=step.objective,
+                context=deepcopy(validation_context),
+                requested_by="managed_plan_validation",
+                priority=step.priority,
+            )
+            if not agent.can_handle(task):
+                raise ValueError(
+                    f"Agent '{step.agent_name}' cannot handle step '{step.step_id}'."
+                )
         return self.management_bridge.submit(plan)
 
     def load_plan(self, plan_id: str) -> MissionPlan | None:
