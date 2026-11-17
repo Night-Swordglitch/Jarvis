@@ -1,5 +1,7 @@
 """Tests for MARK-L's bounded planning brain."""
 
+import json
+
 import pytest
 
 from core.agents.base import BaseAgent
@@ -257,3 +259,30 @@ def test_planner_includes_relevant_project_memory_as_context():
         "Improve JARVIS agent framework"
     )
     assert "JARVIS uses a local Ollama model" in captured["prompt"]
+
+
+def test_plan_store_redacts_sensitive_result_fields(tmp_path):
+    plan = MissionPlan(
+        objective="Store safe task results",
+        steps=[
+            PlanStep(
+                "research",
+                "Collect evidence",
+                "research_agent",
+                result={
+                    "finding": "public detail",
+                    "api_key": "do-not-persist",
+                    "nested": {"refresh_token": "also-do-not-persist"},
+                },
+            )
+        ],
+    )
+    path = tmp_path / "plans.json"
+    store = PlanStore(path)
+    store.save(plan)
+
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    saved_result = raw[plan.plan_id]["steps"][0]["result"]
+    assert saved_result["api_key"] == "[REDACTED]"
+    assert saved_result["nested"]["refresh_token"] == "[REDACTED]"
+    assert saved_result["finding"] == "public detail"
