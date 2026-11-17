@@ -204,9 +204,11 @@ class BrainMissionRuntime:
             if not isinstance(result, AgentResult):
                 raise TypeError("Specialist dispatcher returned an invalid result.")
             results_by_task[task.task_id] = result
-            if not result.success:
+            if result.status.upper() != "SUCCESS":
                 raise RuntimeError(
-                    "; ".join(result.errors) or result.summary or "Specialist failed."
+                    "; ".join(result.errors)
+                    or result.summary
+                    or f"Specialist returned non-final status: {result.status}"
                 )
             return result.to_dict()
 
