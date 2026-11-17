@@ -130,3 +130,43 @@ def test_master_agent_requires_bridge_before_queueing_plan():
     master = MasterAgent(AgentRegistry())
     with pytest.raises(RuntimeError, match="No BrainManagementBridge"):
         master.queue_plan(make_plan())
+
+
+def test_bridge_restores_plan_event_tracking_from_managed_task_metadata(tmp_path):
+    management, tasks, bridge, store = build_system(tmp_path)
+    plan = make_plan()
+    management.accept_mission(plan.objective)
+    research_id, summary_id = bridge.submit(plan)
+
+    tasks.start_task(research_id)
+    tasks.complete_task(research_id, {"finding": "Persisted finding"})
+    bridge.close()
+
+    recovered_bridge = BrainManagementBridge(management, store)
+    restored = recovered_bridge.restore_plan(plan.plan_id)
+
+    assert restored is not None
+    assert restored.steps[0].status == "COMPLETED"
+    assert restored.steps[0].result == {"finding": "Persisted finding"}
+    assert restored.steps[1].status == "PENDING"
+
+    tasks.start_task(summary_id)
+    tasks.complete_task(summary_id, {"summary": "Recovered successfully"})
+    assert restored.status == "COMPLETED"
+    assert store.get(plan.plan_id).steps[1].result == {
+        "summary": "Recovered successfully"
+    }
+
+
+def test_bridge_restore_requires_plan_store():
+    from core.agents.registry import AgentRegistry
+    from core.brain.management_bridge import BrainManagementBridge
+
+    state = ManagementState()
+    events = EventBus()
+    tasks = TaskManager(state, events)
+    management = ManagementManager(state, events, tasks, DependencyGraph())
+    bridge = BrainManagementBridge(management)
+
+    with pytest.raises(RuntimeError, match="PlanStore"):
+        bridge.restore_plan("missing")
