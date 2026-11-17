@@ -265,3 +265,26 @@ def test_scheduler_shutdown_marks_running_work_cancelled():
         assert snapshot["task_states"][task.task_id] == "CANCELLED"
 
     asyncio.run(scenario())
+
+
+
+def test_runtime_terminalizes_mission_when_scheduler_aborts():
+    runtime, management, tasks, agent, _store = build_runtime(
+        __import__("pathlib").Path(".")
+    )
+
+    async def fail_scheduler(_runner, *, task_ids=None):
+        raise RuntimeError("scheduler state mismatch")
+
+    runtime.scheduler.run = fail_scheduler
+    result = asyncio.run(runtime.run("Research then summarize"))
+
+    assert result["scheduler_error"] == "RuntimeError: scheduler state mismatch"
+    assert result["mission_status"] == "FAILED"
+    assert management.mission.status == "FAILED"
+    assert all(
+        tasks.get_task(task_id).status == "BLOCKED"
+        for task_id in result["task_ids"]
+    )
+    assert agent.calls == []
+    assert result["actions_executed"] == 0
