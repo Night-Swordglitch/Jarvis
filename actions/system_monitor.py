@@ -17,7 +17,7 @@ DEFAULT_THRESHOLDS = {
     "gpu":  95.0,
 }
 
-_COOLDOWN   = 300
+_COOLDOWN   = 900
 _CPU_STREAK = 3
 
 # ── NVML DLL cache (Windows: nvml.dll, Linux: libnvidia-ml.so.1) ─────────────
@@ -165,36 +165,30 @@ class SystemMonitor:
         if cpu >= self.thresholds["cpu"]:
             self._cpu_streak += 1
             if self._cpu_streak >= _CPU_STREAK and self._can_alert("cpu"):
-                alerts.append(
-                    f"[SYSTEM_ALERT] CPU usage has been critically high ({cpu:.0f}%) "
-                    "for several seconds. Warn the user in their language and suggest "
-                    "closing heavy applications."
-                )
+                alerts.append(f"CPU {cpu:.0f}%")
                 self._record("cpu")
                 self._cpu_streak = 0
         else:
             self._cpu_streak = 0
 
         if ram >= self.thresholds["ram"] and self._can_alert("ram"):
-            alerts.append(
-                f"[SYSTEM_ALERT] RAM is at {ram:.0f}% — nearly exhausted. "
-                "Warn the user in their language and suggest freeing memory."
-            )
+            alerts.append(f"RAM {ram:.0f}%")
             self._record("ram")
 
         if temp > 0 and temp >= self.thresholds["temp"] and self._can_alert("temp"):
-            alerts.append(
-                f"[SYSTEM_ALERT] CPU temperature is {temp:.0f}°C — above the safe limit. "
-                "Warn the user in their language and advise reducing system load "
-                "or checking cooling."
-            )
+            alerts.append(f"CPU temperature {temp:.0f}°C")
             self._record("temp")
 
         if gpu >= 0 and gpu >= self.thresholds["gpu"] and self._can_alert("gpu"):
-            alerts.append(
-                f"[SYSTEM_ALERT] GPU load is at {gpu:.0f}%. "
-                "Briefly inform the user in their language."
-            )
-            self._record("gpu")
+            alerts.append(f"GPU utilization {gpu:.0f}%")
 
-        return " ".join(alerts) if alerts else None
+        if not alerts or not self._can_alert("system"):
+            return None
+
+        self._record("system")
+        metrics = ", ".join(alerts)
+        return (
+            "[SYSTEM_ALERT] Elevated system resource readings: "
+            f"{metrics}. Briefly inform the user without interrupting an active task. "
+            "Do not recommend closing applications, stopping processes, or changing settings."
+        )
