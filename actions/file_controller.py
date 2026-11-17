@@ -15,7 +15,7 @@ from core.undo import push_undo
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
 # Undo keeps a file's previous contents in memory so `write` can be reversed.
-# Above this size it does not â€” a 200 MB log would sit in RAM for the rest of
+# Above this size it does not — a 200 MB log would sit in RAM for the rest of
 # the session to protect an edit nobody is going to take back.
 _UNDO_CONTENT_LIMIT = 1_000_000
 
@@ -24,7 +24,7 @@ def _undo_move(src: Path, dst: Path):
     """Reverse of a move: put it back where it came from."""
     def _fn():
         if not dst.exists():
-            return f"'{dst.name}' is no longer there â€” nothing moved back."
+            return f"'{dst.name}' is no longer there — nothing moved back."
         src.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(dst), str(src))
         return f"'{src.name}' is back in {src.parent.name}/."
@@ -32,7 +32,7 @@ def _undo_move(src: Path, dst: Path):
 
 
 def _undo_create(target: Path):
-    """Reverse of a create: remove what we made â€” and only if we still made it.
+    """Reverse of a create: remove what we made — and only if we still made it.
 
     Deliberately refuses to touch a directory that has since been filled: the
     undo for 'create a folder' is not 'delete whatever ended up in it'."""
@@ -41,7 +41,7 @@ def _undo_create(target: Path):
             return f"'{target.name}' is already gone."
         if target.is_dir():
             if any(target.iterdir()):
-                return (f"'{target.name}' is not empty any more â€” "
+                return (f"'{target.name}' is not empty any more — "
                         f"leaving it alone rather than deleting your files.")
             target.rmdir()
         else:
@@ -57,7 +57,7 @@ def _undo_write(target: Path, previous: str | None):
         if previous is None:
             if target.exists():
                 target.unlink()
-                return f"Removed '{target.name}' â€” it did not exist before."
+                return f"Removed '{target.name}' — it did not exist before."
             return f"'{target.name}' is already gone."
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(previous, encoding="utf-8")
@@ -72,7 +72,7 @@ def _restore_from_trash(original: Path) -> str:
     Recycle Bin / Trash where the person can also find it themselves. Getting it
     back out again is shell work and only reliable on Windows, where pywin32 is
     already a dependency. Everywhere else this says where the file is instead of
-    pretending it failed â€” the file is not lost either way."""
+    pretending it failed — the file is not lost either way."""
     if _OS == "Windows":
         try:
             import win32com.client
@@ -86,7 +86,7 @@ def _restore_from_trash(original: Path) -> str:
                         return f"'{original.name}' restored from the Recycle Bin."
         except Exception as e:
             print(f"[file] Recycle Bin restore failed: {e}")
-    return (f"'{original.name}' is in the Recycle Bin â€” I could not pull it back "
+    return (f"'{original.name}' is in the Recycle Bin — I could not pull it back "
             f"automatically, but it is there and can be restored by hand.")
 
 
@@ -178,11 +178,11 @@ def _resolve_path(raw: str) -> Path:
     if lower in shortcuts:
         return shortcuts[lower]
 
-    # "desktop/notes/a.md" and "desktop\notes\a.md" â€” a shortcut followed by a
+    # "desktop/notes/a.md" and "desktop\notes\a.md" — a shortcut followed by a
     # sub-path.  Without this branch the whole string falls through to the
     # relative-path return below and is resolved against the process CWD instead
     # of the real Desktop: an "Access denied" when the project lives outside the
-    # home directory, or â€” worse â€” a silent write into a stray "desktop" folder
+    # home directory, or — worse — a silent write into a stray "desktop" folder
     # inside the project when it lives inside it.
     head, sep, rest = raw.replace("\\", "/").partition("/")
     if sep and head.lower() in shortcuts:
@@ -203,7 +203,7 @@ def _safe_trash(target: Path) -> str:
     if not _SEND2TRASH:
         return (
             "send2trash is not installed. "
-            "Run: pip install send2trash â€” "
+            "Run: pip install send2trash — "
             "Permanent deletion is disabled for safety."
         )
     send2trash.send2trash(str(target))
@@ -225,10 +225,10 @@ def list_files(path: str = "desktop", show_hidden: bool = False) -> str:
             if not show_hidden and item.name.startswith("."):
                 continue
             if item.is_dir():
-                items.append(f"ðŸ“ {item.name}/")
+                items.append(f"📁 {item.name}/")
             else:
                 size = _format_size(item.stat().st_size)
-                items.append(f"ðŸ“„ {item.name} ({size})")
+                items.append(f"📄 {item.name} ({size})")
 
         if not items:
             return f"Directory is empty: {target.name}/"
@@ -290,7 +290,7 @@ def delete_file(path: str, name: str = "") -> str:
         if not target.exists():
             return f"Not found: {target.name}"
 
-        # Safe-directory check â€” protect critical user folders
+        # Safe-directory check — protect critical user folders
         protected = {
             _get_desktop(), _get_downloads(), _get_documents(),
             _get_pictures(), _get_music(), _get_videos(), Path.home()
@@ -334,7 +334,7 @@ def move_file(path: str, name: str = "", destination: str = "") -> str:
         shutil.move(str(src), str(dst))
         push_undo(f"moved {origin.name} to {dst.parent.name}/",
                   _undo_move(origin, dst.resolve()))
-        return f"Moved: {src.name} â†’ {dst.parent.name}/"
+        return f"Moved: {src.name} → {dst.parent.name}/"
 
     except Exception as e:
         return f"Could not move: {e}"
@@ -365,7 +365,7 @@ def copy_file(path: str, name: str = "", destination: str = "") -> str:
         else:
             shutil.copy2(str(src), str(dst))
 
-        # The undo for a copy is deleting the copy â€” never the original.
+        # The undo for a copy is deleting the copy — never the original.
         _copy = dst.resolve()
         def _undo_copy():
             if not _copy.exists():
@@ -377,7 +377,7 @@ def copy_file(path: str, name: str = "", destination: str = "") -> str:
             return f"Removed the copy in {_copy.parent.name}/."
         push_undo(f"copied {src.name} to {dst.parent.name}/", _undo_copy)
 
-        return f"Copied: {src.name} â†’ {dst.parent.name}/"
+        return f"Copied: {src.name} → {dst.parent.name}/"
 
     except Exception as e:
         return f"Could not copy: {e}"
@@ -402,7 +402,7 @@ def rename_file(path: str, name: str = "", new_name: str = "") -> str:
         target.rename(new_path)
         push_undo(f"renamed {old_path.name} to {new_name}",
                   _undo_move(old_path, new_path.resolve()))
-        return f"Renamed: {target.name} â†’ {new_name}"
+        return f"Renamed: {target.name} → {new_name}"
 
     except Exception as e:
         return f"Could not rename: {e}"
@@ -421,7 +421,7 @@ def read_file(path: str, name: str = "", max_chars: int = 4000) -> str:
 
         content = target.read_text(encoding="utf-8", errors="ignore")
         if len(content) > max_chars:
-            content = content[:max_chars] + f"\n\n[Truncated â€” {len(content)} total chars]"
+            content = content[:max_chars] + f"\n\n[Truncated — {len(content)} total chars]"
         return content
 
     except Exception as e:
@@ -491,7 +491,7 @@ def find_files(name: str = "", extension: str = "",
             if name and name.lower() not in item.name.lower():
                 continue
             size = _format_size(item.stat().st_size)
-            results.append(f"ðŸ“„ {item.name} ({size}) â€” {item.parent}")
+            results.append(f"📄 {item.name} ({size}) — {item.parent}")
             if len(results) >= max_results:
                 break
 
@@ -594,9 +594,9 @@ def organize_desktop() -> str:
             origin = item.resolve()
             shutil.move(str(item), str(new_path))
             journal.append((origin, new_path.resolve()))
-            moved.append(f"{item.name} â†’ {target_dir.name}/")
+            moved.append(f"{item.name} → {target_dir.name}/")
 
-        # One command, dozens of moves â€” so one undo that reverses all of them.
+        # One command, dozens of moves — so one undo that reverses all of them.
         # Without this, "organize my desktop" is the single least reversible
         # thing the assistant can do to a person's files, and it was completely
         # ungated.
@@ -612,7 +612,7 @@ def organize_desktop() -> str:
                     except Exception as e:
                         print(f"[file] undo organize: {moved_to.name}: {e}")
                 # Clear away the folders we created, but only while they are
-                # empty â€” anything the user put in since stays.
+                # empty — anything the user put in since stays.
                 for folder in {m.parent for _o, m in entries}:
                     try:
                         if folder.exists() and folder.is_dir() and not any(folder.iterdir()):
@@ -653,7 +653,7 @@ def get_file_info(path: str, name: str = "") -> str:
             "Location":  str(target.parent),
             "Created":   datetime.fromtimestamp(stat.st_ctime).strftime("%Y-%m-%d %H:%M"),
             "Modified":  datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
-            "Extension": target.suffix or "â€”",
+            "Extension": target.suffix or "—",
         }
         return "\n".join(f"  {k}: {v}" for k, v in info.items())
 
@@ -736,7 +736,7 @@ def file_controller(
         return f"File controller error ({action}): {e}"
 
 
-# â”€â”€ Tool declaration (auto-discovered by core/action_loader.py) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "file_controller",
     "description": "Manages files and folders: list, create, delete, move, copy, rename, read, write, find, disk usage.",
