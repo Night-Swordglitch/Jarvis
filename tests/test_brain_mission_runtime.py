@@ -12,6 +12,7 @@ from core.dependency_graph import DependencyGraph
 from core.events.bus import EventBus
 from core.management.manager import ManagementManager
 from core.management.state import ManagementState
+from core.management.state_store import ManagementStateStore
 from core.scheduler import Scheduler
 from core.task_manager import TaskManager
 
@@ -363,3 +364,85 @@ def test_saved_plan_cannot_be_run_without_a_proposed_recovery_record(tmp_path):
 
     with pytest.raises(ValueError, match="not an unaccepted recovery proposal"):
         asyncio.run(runtime.run_saved_plan(plan.plan_id))
+
+
+
+def test_proposed_recovery_plan_can_be_explicitly_resumed_after_restart(tmp_path):
+    recovery_plan = MissionPlan(
+        objective="Research then summarize",
+        steps=[
+            PlanStep(
+                "alternate_summary",
+                "Prepare an alternate summary from completed research",
+                "demo_agent",
+            )
+        ],
+        summary="Alternative summary after restart.",
+    )
+    runtime, management, _tasks, agent, plan_store = build_runtime(
+        tmp_path,
+        fail_on={"Summarize the evidence"},
+        recovery_plan=recovery_plan,
+    )
+    first_result = asyncio.run(runtime.run("Research then summarize"))
+    recovery_id = first_result["replan_proposal"]["metadata"]["brain_plan_id"]
+
+    state_path = tmp_path / "management-state.json"
+    ManagementStateStore(state_path).save(management.state)
+
+    restored_state = ManagementStateStore(state_path).load()
+    restored_events = EventBus()
+    restored_tasks = TaskManager(restored_state, restored_events)
+    restored_graph = DependencyGraph()
+    ManagementStateStore(state_path).restore_dependency_graph(
+        restored_state,
+        restored_graph,
+    )
+    restored_management = ManagementManager(
+        restored_state,
+        restored_events,
+        restored_tasks,
+        restored_graph,
+    )
+    restored_bridge = BrainManagementBridge(restored_management, plan_store)
+    for saved_plan in plan_store.all():
+        if saved_plan.status in {"RUNNING", "PARTIAL", "FAILED"}:
+            restored_bridge.restore_plan(saved_plan.plan_id)
+
+    resumed_agent = DemoAgent()
+    registry = AgentRegistry()
+    registry.register(resumed_agent)
+    restored_master = MasterAgent(
+        registry,
+        plan_store=plan_store,
+        management_bridge=restored_bridge,
+        event_bus=restored_events,
+    )
+
+    def synthesize(objective, context, results):
+        return AgentResult(
+            agent_name="master",
+            task_id="master-synthesis",
+            status="SUCCESS",
+            summary="Recovery synthesis completed.",
+            findings=["Recovery complete."],
+        )
+
+    restored_master.synthesize = synthesize
+    restored_scheduler = Scheduler(restored_tasks, restored_graph, max_workers=2)
+    restored_runtime = BrainMissionRuntime(
+        restored_master,
+        restored_management,
+        restored_scheduler,
+    )
+
+    resumed = asyncio.run(restored_runtime.run_saved_plan(recovery_id))
+
+    assert resumed["mission_status"] == "COMPLETED"
+    assert resumed_agent.calls[0].context["recovery_context"]["user_approved_resume"] is True
+    assert any(
+        item["objective"] == "Research the subject"
+        for item in resumed_agent.calls[0].context["recovery_context"]["completed_steps"]
+    )
+    assert plan_store.get(recovery_id).status == "COMPLETED"
+    assert restored_state.metadata["replan_proposals"][recovery_id]["status"] == "COMPLETED"
