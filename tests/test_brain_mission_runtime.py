@@ -20,16 +20,17 @@ class DemoAgent(BaseAgent):
     name = "demo_agent"
     description = "Test specialist."
 
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, fail_on=None):
         self.calls = []
         self.fail = fail
+        self.fail_on = set(fail_on or [])
 
     def can_handle(self, task):
         return True
 
     def run(self, task: AgentTask):
         self.calls.append(task)
-        if self.fail:
+        if self.fail or task.objective in self.fail_on:
             return AgentResult(
                 agent_name=self.name,
                 task_id=task.task_id,
@@ -51,17 +52,20 @@ class DemoAgent(BaseAgent):
 
 
 class StaticPlanner:
-    def __init__(self, plan=None, error=None):
+    def __init__(self, plan=None, error=None, recovery_plan=None):
         self.plan = plan
         self.error = error
+        self.recovery_plan = recovery_plan
 
     def create_plan(self, objective, context=None):
         if self.error:
             raise self.error
+        if context and context.get("recovery_context") and self.recovery_plan:
+            return self.recovery_plan
         return self.plan
 
 
-def build_runtime(tmp_path, *, fail=False):
+def build_runtime(tmp_path, *, fail=False, fail_on=None, recovery_plan=None):
     state = ManagementState()
     events = EventBus()
     tasks = TaskManager(state, events)
@@ -71,7 +75,7 @@ def build_runtime(tmp_path, *, fail=False):
     store = PlanStore(tmp_path / "brain-plans.json")
     bridge = BrainManagementBridge(management, store)
 
-    agent = DemoAgent(fail=fail)
+    agent = DemoAgent(fail=fail, fail_on=fail_on)
     registry = AgentRegistry()
     registry.register(agent)
     master = MasterAgent(
@@ -80,18 +84,21 @@ def build_runtime(tmp_path, *, fail=False):
         management_bridge=bridge,
         event_bus=events,
     )
-    master.goal_planner = StaticPlanner(MissionPlan(
-        objective="Research then summarize",
-        steps=[
-            PlanStep("research", "Research the subject", "demo_agent"),
-            PlanStep(
-                "summary",
-                "Summarize the evidence",
-                "demo_agent",
-                depends_on=["research"],
-            ),
-        ],
-    ))
+    master.goal_planner = StaticPlanner(
+        plan=MissionPlan(
+            objective="Research then summarize",
+            steps=[
+                PlanStep("research", "Research the subject", "demo_agent"),
+                PlanStep(
+                    "summary",
+                    "Summarize the evidence",
+                    "demo_agent",
+                    depends_on=["research"],
+                ),
+            ],
+        ),
+        recovery_plan=recovery_plan,
+    )
 
     def synthesize(objective, context, results):
         return AgentResult(
@@ -124,8 +131,23 @@ def test_runtime_executes_plan_through_scheduler_and_dependency_gate(tmp_path):
     assert management.mission.status == "COMPLETED"
 
 
-def test_runtime_failure_blocks_dependents_without_automatic_retry(tmp_path):
-    runtime, management, tasks, agent, _store = build_runtime(tmp_path, fail=True)
+def test_runtime_failure_blocks_dependents_and_proposes_recovery_without_retry(tmp_path):
+    recovery_plan = MissionPlan(
+        objective="Research then summarize",
+        steps=[
+            PlanStep(
+                "alternate_research",
+                "Try an alternate evidence source",
+                "demo_agent",
+            )
+        ],
+        summary="Alternative research route.",
+    )
+    runtime, management, tasks, agent, store = build_runtime(
+        tmp_path,
+        fail=True,
+        recovery_plan=recovery_plan,
+    )
 
     result = asyncio.run(runtime.run("Research then summarize"))
 
@@ -133,8 +155,49 @@ def test_runtime_failure_blocks_dependents_without_automatic_retry(tmp_path):
     assert result["mission_status"] == "FAILED"
     assert result["plan"]["status"] == "FAILED"
     assert result["scheduler"]["blocked"]
+    assert result["monitor"]["healthy"] is False
+    assert result["replan_proposal"] is not None
+    assert result["replan_proposal"]["failed_task_ids"] == [result["task_ids"][0]]
+    recovery_id = result["replan_proposal"]["metadata"]["brain_plan_id"]
+    assert store.get(recovery_id).status == "READY"
+    assert tasks.state.task_count() == 2  # proposal was not queued or retried
     assert management.mission.status == "FAILED"
     assert result["actions_executed"] == 0
+
+
+def test_recovery_proposal_preserves_completed_work(tmp_path):
+    recovery_plan = MissionPlan(
+        objective="Research then summarize",
+        steps=[
+            PlanStep(
+                "alternate_summary",
+                "Prepare the summary using a different structure",
+                "demo_agent",
+            )
+        ],
+        summary="Alternative summary route.",
+    )
+    runtime, _management, tasks, agent, store = build_runtime(
+        tmp_path,
+        fail_on={"Summarize the evidence"},
+        recovery_plan=recovery_plan,
+    )
+
+    result = asyncio.run(runtime.run("Research then summarize"))
+
+    assert [call.objective for call in agent.calls] == [
+        "Research the subject",
+        "Summarize the evidence",
+    ]
+    assert tasks.get_task(result["task_ids"][0]).status == "COMPLETED"
+    assert result["replan_proposal"] is not None
+    assert result["replan_proposal"]["metadata"]["preserved_completed_steps"] == [
+        "research"
+    ]
+    recovery_id = result["replan_proposal"]["metadata"]["brain_plan_id"]
+    proposed = store.get(recovery_id)
+    assert proposed is not None
+    assert all(step.objective != "Research the subject" for step in proposed.steps)
 
 
 def test_planning_failure_does_not_create_an_active_mission(tmp_path):
