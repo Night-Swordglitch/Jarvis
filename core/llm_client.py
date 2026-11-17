@@ -1,7 +1,7 @@
 ﻿"""
 Local LLM client for MARK XL.
 
-Supports two backends â€” selected via  "llm_provider"  in config/api_keys.json:
+Supports two backends — selected via  "llm_provider"  in config/api_keys.json:
 
   "llm_provider": "ollama"   (default)
         Uses Ollama's native /api/chat endpoint.
@@ -70,7 +70,7 @@ def ensure_ollama_running(timeout: int = 15) -> bool:
 
     if provider == "openai":
         # OpenAI-compatible servers (LM Studio, LocalAI, etc.) must be started
-        # by the user â€” we just check if they're reachable.
+        # by the user — we just check if they're reachable.
         health = f"{url}/v1/models"
         try:
             ok = requests.get(health, timeout=5).status_code == 200
@@ -86,7 +86,7 @@ def ensure_ollama_running(timeout: int = 15) -> bool:
             )
             return False
 
-    # â”€â”€ Ollama â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Ollama ──────────────────────────────────────────────────────────────
     health = f"{url}/api/tags"
 
     def _is_up() -> bool:
@@ -98,7 +98,7 @@ def ensure_ollama_running(timeout: int = 15) -> bool:
     if _is_up():
         return True
 
-    print("[LLM] Ollama not running â€” launching 'ollama serve'â€¦")
+    print("[LLM] Ollama not running — launching 'ollama serve'…")
     try:
         kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
         if sys.platform == "win32":
@@ -127,19 +127,19 @@ def warmup_model(system_prompt: str | None = None) -> bool:
     Pre-load the model AND prime Ollama's KV prefix cache.
 
     Why the system_prompt matters
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    ─────────────────────────────
     Ollama caches the KV attention state of the prompt prefix across requests.
     If warmup includes the same system prompt that real requests will use, Ollama
     evaluates those tokens ONCE at startup.  Every subsequent request only needs
-    to evaluate the small delta (user message Â± time context) instead of the full
-    300-500 token system prompt â†’ drops first-token latency from ~17 s to <1 s.
+    to evaluate the small delta (user message ± time context) instead of the full
+    300-500 token system prompt → drops first-token latency from ~17 s to <1 s.
 
     Pass the *static* part of the system prompt (the JARVIS protocol text, without
     timestamps or per-minute context) so the prefix stays valid across calls.
     """
     url, model = get_llm_settings()
     provider   = get_llm_provider()
-    print(f"[LLM] Warming up '{model}' ({provider})â€¦")
+    print(f"[LLM] Warming up '{model}' ({provider})…")
 
     messages: list[dict] = []
     if system_prompt:
@@ -148,7 +148,7 @@ def warmup_model(system_prompt: str | None = None) -> bool:
 
     if provider == "openai":
         # OpenAI-compatible: just fire a minimal request to ensure the model is loaded.
-        # No keep_alive or KV-cache priming available â€” server manages this internally.
+        # No keep_alive or KV-cache priming available — server manages this internally.
         payload = {
             "model":      model,
             "messages":   messages,
@@ -164,14 +164,14 @@ def warmup_model(system_prompt: str | None = None) -> bool:
             print(f"[LLM] Warmup failed (non-fatal): {e}")
             return False
 
-    # â”€â”€ Ollama â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Ollama ──────────────────────────────────────────────────────────────
     payload = {
         "model":      model,
         "messages":   messages,
         "stream":     False,
         "keep_alive": get_llm_keep_alive(),
-        # num_gpu:99 â†’ push ALL transformer layers to GPU (Ollama caps at available)
-        # This is safe even without a GPU â€” Ollama silently ignores if n_gpu_layers=0
+        # num_gpu:99 → push ALL transformer layers to GPU (Ollama caps at available)
+        # This is safe even without a GPU — Ollama silently ignores if n_gpu_layers=0
         "options":    {"num_predict": 1, "num_gpu": 99},
     }
     try:
@@ -212,7 +212,7 @@ def check_model_available(log: Callable | None = None) -> bool:
             )
             print(warn)
             if log:
-                log(f"WRN: '{model}' not found â€” run: ollama pull {model}")
+                log(f"WRN: '{model}' not found — run: ollama pull {model}")
         return found
     except Exception:
         return True   # Ollama might still be starting up; non-blocking
@@ -264,7 +264,7 @@ def call_llm(
             resp.raise_for_status()
             choice = resp.json().get("choices", [{}])[0]
             msg    = choice.get("message", {})
-            # OpenAI tool_calls format â†’ normalise to Ollama-style
+            # OpenAI tool_calls format → normalise to Ollama-style
             raw_tc  = msg.get("tool_calls") or []
             tc_list = [
                 {
@@ -287,7 +287,7 @@ def call_llm(
         except Exception as e:
             raise RuntimeError(f"OpenAI-compatible LLM call failed: {e}")
 
-    # â”€â”€ Ollama â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Ollama ──────────────────────────────────────────────────────────────
     endpoint = f"{url}/api/chat"
     payload = {
         "model":      model,
@@ -309,7 +309,7 @@ def call_llm(
             "tool_calls": msg.get("tool_calls") or [],
         }
     except requests.exceptions.ConnectionError as e:
-        print(f"[LLM] ConnectionError â€” trying to restart Ollamaâ€¦ ({e})")
+        print(f"[LLM] ConnectionError — trying to restart Ollama… ({e})")
         if ensure_ollama_running():
             try:
                 resp = requests.post(endpoint, json=payload, timeout=timeout)
@@ -329,7 +329,7 @@ def call_llm(
     except requests.exceptions.Timeout:
         raise RuntimeError("Ollama request timed out after 120 s.")
     except requests.exceptions.HTTPError as e:
-        print(f"[LLM] HTTPError: {e.response.status_code} â€” {e.response.text[:200]}")
+        print(f"[LLM] HTTPError: {e.response.status_code} — {e.response.text[:200]}")
         raise RuntimeError(f"Ollama HTTP error: {e.response.status_code}")
     except Exception as e:
         print(f"[LLM] Unexpected error: {type(e).__name__}: {e}")
@@ -383,7 +383,7 @@ def _stream_openai(
     timeout:  int,
 ) -> Generator[dict, None, None]:
     """
-    Streaming backend for OpenAI-compatible servers (LM Studio, LocalAI, Janâ€¦).
+    Streaming backend for OpenAI-compatible servers (LM Studio, LocalAI, Jan…).
 
     Parses Server-Sent Events (SSE) and accumulates streaming tool-call fragments
     so the output format is identical to the Ollama backend.
@@ -406,7 +406,7 @@ def _stream_openai(
             resp.raise_for_status()
             full_content = ""
             buf          = ""
-            # tool_call fragments: index â†’ {"id", "function": {"name", "arguments"}}
+            # tool_call fragments: index → {"id", "function": {"name", "arguments"}}
             tc_fragments: dict[int, dict] = {}
 
             for raw in resp.iter_lines():
@@ -460,7 +460,7 @@ def _stream_openai(
             if buf.strip():
                 yield {"type": "sentence", "text": buf.strip()}
 
-            # Parse accumulated tool-call argument strings â†’ dicts
+            # Parse accumulated tool-call argument strings → dicts
             tool_calls: list = []
             for idx in sorted(tc_fragments):
                 frag = tc_fragments[idx]
@@ -502,8 +502,8 @@ def call_llm_stream(
     Streaming chat request.  Routes to Ollama or OpenAI-compatible backend.
 
     Yields:
-        {"type": "sentence", "text": str}   â€” each complete sentence as it arrives
-        {"type": "done", "content": str, "tool_calls": list}  â€” when stream ends
+        {"type": "sentence", "text": str}   — each complete sentence as it arrives
+        {"type": "done", "content": str, "tool_calls": list}  — when stream ends
 
     Sentences are split on [.!?] + whitespace so TTS can start immediately.
     Tool calls always appear in the final "done" event.
@@ -521,7 +521,7 @@ def call_llm_stream(
         "messages":   messages,
         "stream":     True,
         "keep_alive": get_llm_keep_alive(),
-        # 150 tokens â‰ˆ 100 words â‰ˆ 3-4 sentences â€” enough for any voice reply.
+        # 150 tokens ≈ 100 words ≈ 3-4 sentences — enough for any voice reply.
         # num_gpu:99 pushes all layers to GPU; num_thread removed (Ollama auto-tunes).
         "options":    {"num_predict": 150, "num_gpu": 99},
     }
@@ -577,7 +577,7 @@ def call_llm_stream(
     try:
         yield from _do_stream()
     except requests.exceptions.ConnectionError as e:
-        print(f"[LLM] Stream ConnectionError â€” trying to restart Ollamaâ€¦ ({e})")
+        print(f"[LLM] Stream ConnectionError — trying to restart Ollama… ({e})")
         if ensure_ollama_running():
             yield from _do_stream()
             return
