@@ -7,8 +7,6 @@ It never dispatches agents or executes requested actions.
 
 from __future__ import annotations
 
-from typing import Any
-
 from core.brain.models import MissionPlan
 from core.brain.store import PlanStore
 from core.events.events import Event
@@ -92,6 +90,59 @@ class BrainManagementBridge:
             self.store.save(plan)
         return task_ids
 
+    def restore_plan(self, plan_id: str) -> MissionPlan | None:
+        """Restore event tracking for a stored plan and its managed tasks."""
+        if self.store is None:
+            raise RuntimeError("A PlanStore is required to restore a plan.")
+        plan = self.store.get(plan_id)
+        if plan is None:
+            return None
+
+        step_by_id = {step.step_id: step for step in plan.steps}
+        found: set[str] = set()
+        groups = (
+            self.management.task_manager.state.queued_tasks,
+            self.management.task_manager.state.active_tasks,
+            self.management.task_manager.state.completed_tasks,
+            self.management.task_manager.state.failed_tasks,
+            self.management.task_manager.state.blocked_tasks,
+        )
+        status_map = {
+            "QUEUED": "PENDING",
+            "RUNNING": "RUNNING",
+            "COMPLETED": "COMPLETED",
+            "FAILED": "FAILED",
+            "BLOCKED": "BLOCKED",
+            "CANCELLED": "BLOCKED",
+        }
+
+        for group in groups:
+            for task_id, task in group.items():
+                metadata = task.metadata if isinstance(task.metadata, dict) else {}
+                if metadata.get("brain_plan_id") != plan.plan_id:
+                    continue
+                step_id = metadata.get("brain_step_id")
+                step = step_by_id.get(step_id)
+                if step is None:
+                    continue
+                self._task_to_step[task_id] = (plan.plan_id, step_id)
+                found.add(step_id)
+                step.status = status_map.get(task.status, step.status)
+                step.result = dict(task.result) if task.result is not None else None
+                step.error = task.error
+
+        missing = set(step_by_id) - found
+        if missing:
+            raise RuntimeError(
+                "Cannot fully restore plan; managed tasks are missing for steps: "
+                + ", ".join(sorted(missing))
+            )
+
+        self._plans[plan.plan_id] = plan
+        self._refresh_plan_status(plan)
+        self.store.save(plan)
+        return plan
+
     def _on_task_event(self, event: Event) -> None:
         task_id = event.payload.get("task_id")
         if not isinstance(task_id, str):
@@ -121,7 +172,14 @@ class BrainManagementBridge:
             if task.error:
                 step.error = task.error
 
-        statuses = [item.status for item in plan.steps]
+        self._refresh_plan_status(plan)
+
+        if self.store is not None:
+            self.store.save(plan)
+
+    @staticmethod
+    def _refresh_plan_status(plan: MissionPlan) -> None:
+        statuses = [step.status for step in plan.steps]
         if all(status == "COMPLETED" for status in statuses):
             plan.status = "COMPLETED"
         elif any(status in {"FAILED", "BLOCKED"} for status in statuses):
@@ -132,9 +190,6 @@ class BrainManagementBridge:
             )
         else:
             plan.status = "RUNNING"
-
-        if self.store is not None:
-            self.store.save(plan)
 
     def close(self) -> None:
         """Unsubscribe this bridge from task lifecycle events."""
