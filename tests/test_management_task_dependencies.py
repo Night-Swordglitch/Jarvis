@@ -143,3 +143,22 @@ def test_dependency_cycle_is_rejected_before_any_tasks_are_created():
 
     assert state.task_count() == 0
     assert graph.tasks() == []
+
+
+
+def test_task_cancellation_reports_the_actual_previous_status():
+    manager, tasks, _graph, _state = build_manager()
+    observed = []
+    manager.event_bus.subscribe(
+        "TASK_CANCELLED",
+        lambda event: observed.append(dict(event.payload)),
+    )
+
+    task = tasks.create_task("Cancel before starting")
+    tasks.cancel_task(task.task_id)
+
+    assert observed == [{
+        "task_id": task.task_id,
+        "previous_status": "QUEUED",
+    }]
+    assert tasks.get_task(task.task_id).status == "CANCELLED"
