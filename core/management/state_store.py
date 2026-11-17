@@ -78,10 +78,10 @@ class ManagementStateStore:
                 and str(mission_data.get("status", "")).upper()
                 not in {"COMPLETED", "FAILED", "CANCELLED"}
             )
-            interrupted_mission = bool(
-                mission_is_active
-                and state.status.upper() in {"PLANNING", "RUNNING"}
-            )
+            # The persisted top-level status is also authoritative evidence
+            # of an interrupted mission. Do not leave an orphaned RUNNING
+            # state merely because an older snapshot lacks mission metadata.
+            interrupted_mission = state.status.upper() in {"PLANNING", "RUNNING"}
 
             if interrupted_active or interrupted_queued or interrupted_mission:
                 state.status = "FAILED"
