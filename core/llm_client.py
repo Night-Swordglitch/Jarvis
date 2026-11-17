@@ -169,7 +169,7 @@ def warmup_model(system_prompt: str | None = None) -> bool:
         "model":      model,
         "messages":   messages,
         "stream":     False,
-        "keep_alive": -1,
+        "keep_alive": get_llm_keep_alive(),
         # num_gpu:99 â†’ push ALL transformer layers to GPU (Ollama caps at available)
         # This is safe even without a GPU â€” Ollama silently ignores if n_gpu_layers=0
         "options":    {"num_predict": 1, "num_gpu": 99},
@@ -224,6 +224,14 @@ def get_llm_settings() -> tuple[str, str]:
     url   = cfg.get("llm_url",   _DEFAULTS["llm_url"]).rstrip("/")
     model = cfg.get("llm_model", _DEFAULTS["llm_model"])
     return url, model
+
+
+def get_llm_keep_alive() -> str:
+    """Return Ollama's idle-unload interval (default: five minutes)."""
+    value = _load_config().get("llm_keep_alive", "5m")
+    if not isinstance(value, str) or not value.strip() or len(value) > 32:
+        return "5m"
+    return value.strip()
 
 
 def call_llm(
@@ -285,7 +293,7 @@ def call_llm(
         "model":      model,
         "messages":   messages,
         "stream":     False,
-        "keep_alive": -1,
+        "keep_alive": get_llm_keep_alive(),
         "options":    {"num_predict": 150, "num_gpu": 99},
     }
     if tools:
@@ -347,7 +355,7 @@ def call_llm_text(
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    payload = {"model": m, "messages": messages, "stream": False, "keep_alive": -1, "options": {"num_predict": 600}}
+    payload = {"model": m, "messages": messages, "stream": False, "keep_alive": get_llm_keep_alive(), "options": {"num_predict": 600}}
 
     try:
         resp = requests.post(endpoint, json=payload, timeout=timeout)
@@ -512,7 +520,7 @@ def call_llm_stream(
         "model":      model,
         "messages":   messages,
         "stream":     True,
-        "keep_alive": -1,
+        "keep_alive": get_llm_keep_alive(),
         # 150 tokens â‰ˆ 100 words â‰ˆ 3-4 sentences â€” enough for any voice reply.
         # num_gpu:99 pushes all layers to GPU; num_thread removed (Ollama auto-tunes).
         "options":    {"num_predict": 150, "num_gpu": 99},
