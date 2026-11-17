@@ -127,7 +127,7 @@ Constraints:
                     "Produce a structured plan only. You have no tool or "
                     "action execution authority."
                 ),
-                timeout=60,
+                timeout=180,
             )
             payload = self._parse_json(response)
             plan = self._build_plan(objective.strip(), payload)
