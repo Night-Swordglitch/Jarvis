@@ -658,6 +658,13 @@ class JarvisLive:
             BASE_DIR / "memory" / "management_state.json"
         )
         self._management_state = self._management_state_store.load()
+        restart_notice = self._management_state.metadata.get("restart_recovery")
+        if isinstance(restart_notice, dict) and restart_notice.get("requires_review"):
+            print(
+                "[Management] Previous mission was interrupted. "
+                "Running tasks were failed, queued tasks were blocked, "
+                "and nothing was resumed automatically."
+            )
         self._management_event_bus = EventBus()
         self._management_task_manager = TaskManager(
             self._management_state,
