@@ -167,21 +167,18 @@ class ManagementStateStore:
 
         for task in tasks:
             for dependency_id in task.dependencies:
-                if not graph.has_task(dependency_id):
-                    if task.status == "QUEUED":
-                        state.queued_tasks.pop(task.task_id, None)
-                        task.status = "BLOCKED"
-                        task.error = (
+                try:
+                    if not isinstance(dependency_id, str) or not dependency_id.strip():
+                        raise ValueError("Dependency ID must be a non-empty string.")
+                    if not graph.has_task(dependency_id):
+                        raise KeyError(
                             f"Missing persisted dependency: {dependency_id}"
                         )
-                        state.blocked_tasks[task.task_id] = task
-                    continue
-                try:
                     graph.add_dependency(task.task_id, dependency_id)
-                except ValueError as exc:
-                    # Persisted dependency data is untrusted on restart. A
-                    # cycle must not prevent the application from starting or
-                    # leave queued work eligible for execution.
+                except (KeyError, TypeError, ValueError) as exc:
+                    # Persisted dependency data is untrusted on restart. Missing
+                    # IDs, malformed values, and cycles must not prevent startup
+                    # or leave queued work eligible for execution.
                     if task.status == "QUEUED":
                         state.queued_tasks.pop(task.task_id, None)
                         task.status = "BLOCKED"
@@ -191,7 +188,7 @@ class ManagementStateStore:
                         "dependency_restore_errors", []
                     ).append({
                         "task_id": task.task_id,
-                        "dependency_id": dependency_id,
+                        "dependency_id": str(dependency_id),
                         "error": str(exc),
                     })
 
