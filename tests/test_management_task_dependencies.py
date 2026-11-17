@@ -106,3 +106,18 @@ def test_fail_mission_is_terminal_and_allows_a_new_mission():
     next_mission = manager.accept_mission("Next mission")
     assert next_mission.status == "CREATED"
     assert manager.running is True
+
+
+def test_completed_tasks_from_previous_mission_do_not_complete_new_mission():
+    manager, tasks, _graph, _state = build_manager()
+    first_id = manager.create_planned_tasks([
+        {"id": "old", "objective": "Complete old work"}
+    ])[0]
+    tasks.start_task(first_id)
+    tasks.complete_task(first_id, {"done": True})
+    manager.complete_mission()
+
+    manager.accept_mission("A new mission with no tasks yet")
+    decision = manager.evaluate()
+
+    assert decision.decision.value == "WAIT"
