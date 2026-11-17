@@ -77,6 +77,7 @@ def test_duplicate_plan_alias_is_rejected_before_tasks_are_created():
 
 def test_management_decisions_ignore_failed_tasks_from_previous_missions():
     manager, tasks, _graph, state = build_manager()
+    first_mission_id = manager.mission.mission_id
     first_id = manager.create_planned_tasks([
         {"id": "old", "objective": "Old mission work"}
     ])[0]
@@ -85,7 +86,7 @@ def test_management_decisions_ignore_failed_tasks_from_previous_missions():
     manager.fail_mission("First mission ended unsuccessfully")
 
     manager.accept_mission("A new independent mission")
-    assert state.metadata["mission_history"][0]["mission_id"] == "mission-1"
+    assert state.metadata["mission_history"][0]["mission_id"] == first_mission_id
     new_id = manager.create_planned_tasks([
         {"id": "new", "objective": "New mission work"}
     ])[0]
