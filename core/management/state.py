@@ -129,10 +129,7 @@ class ManagementState:
                 dict(item) for item in data.get("recent_events", [])
             ],
             open_questions=list(data.get("open_questions", [])),
-            pending_approvals=[
-                dict(item) if isinstance(item, dict) else {"value": item}
-                for item in data.get("pending_approvals", [])
-            ],
+            pending_approvals=list(data.get("pending_approvals", [])),
             next_actions=list(data.get("next_actions", [])),
             metadata=dict(data.get("metadata", {})),
         )
