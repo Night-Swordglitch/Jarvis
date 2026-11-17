@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 
 from core.events.bus import EventBus
 from core.events.events import Event
