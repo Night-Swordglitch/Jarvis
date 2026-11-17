@@ -139,6 +139,8 @@ def test_runtime_executes_plan_through_scheduler_and_dependency_gate(tmp_path):
     assert len(result["action_requests"]) == 2
     assert len(agent.calls) == 2
     assert agent.calls[1].context["dependency_results"]
+    dependency_payload = next(iter(agent.calls[1].context["dependency_results"].values()))
+    assert dependency_payload["data"]["api_key"] == "[REDACTED]"
     assert all(tasks.get_task(task_id).status == "COMPLETED" for task_id in result["task_ids"])
     assert tasks.get_task(unrelated.task_id).status == "QUEUED"
     assert unrelated.task_id not in result["scheduler"]["task_states"]
