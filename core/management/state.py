@@ -20,6 +20,25 @@ class TaskState:
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TaskState":
+        if not isinstance(data, dict):
+            raise TypeError("Task data must be a dictionary.")
+        result = data.get("result")
+        if result is not None and not isinstance(result, dict):
+            raise TypeError("Task result must be a dictionary or None.")
+        return cls(
+            task_id=str(data["task_id"]),
+            objective=str(data["objective"]),
+            status=str(data.get("status", "QUEUED")).upper(),
+            priority=int(data.get("priority", 50)),
+            agent_name=data.get("agent_name"),
+            dependencies=list(data.get("dependencies", [])),
+            result=dict(result) if result is not None else None,
+            error=data.get("error"),
+            metadata=dict(data.get("metadata", {})),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
@@ -91,6 +110,53 @@ class ManagementState:
                 self.failed_tasks,
             )
         )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ManagementState":
+        """Restore management state from its serialized representation."""
+        if not isinstance(data, dict):
+            raise TypeError("Management state data must be a dictionary.")
+
+        state = cls(
+            mission_id=data.get("mission_id"),
+            objective=str(data.get("objective", "")),
+            status=str(data.get("status", "IDLE")),
+            current_plan=[
+                dict(item) if isinstance(item, dict) else item
+                for item in data.get("current_plan", [])
+            ],
+            recent_events=[
+                dict(item) for item in data.get("recent_events", [])
+            ],
+            open_questions=list(data.get("open_questions", [])),
+            pending_approvals=[
+                dict(item) if isinstance(item, dict) else {"value": item}
+                for item in data.get("pending_approvals", [])
+            ],
+            next_actions=list(data.get("next_actions", [])),
+            metadata=dict(data.get("metadata", {})),
+        )
+
+        for group_name in (
+            "active_tasks",
+            "queued_tasks",
+            "blocked_tasks",
+            "completed_tasks",
+            "failed_tasks",
+        ):
+            raw_group = data.get(group_name, {})
+            if not isinstance(raw_group, dict):
+                raise TypeError(f"{group_name} must be a dictionary.")
+            group = getattr(state, group_name)
+            for task_id, raw_task in raw_group.items():
+                task = TaskState.from_dict(raw_task)
+                if task.task_id != task_id:
+                    raise ValueError(
+                        f"Task key mismatch in {group_name}: {task_id}"
+                    )
+                group[task_id] = task
+
+        return state
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the complete management state."""
