@@ -122,11 +122,35 @@ class BrainMissionRuntime:
                 )
             return result.to_dict()
 
+        scheduler_error: str | None = None
         try:
             scheduler_snapshot = await self.scheduler.run(
                 run_specialist,
                 task_ids=set(task_ids),
             )
+            monitor_snapshot = monitor.snapshot()
+        except Exception as exc:
+            # An internal scheduler failure must not strand a mission in an
+            # apparently active state. Stop workers, then terminalize every
+            # remaining managed task through TaskManager.
+            scheduler_error = f"{type(exc).__name__}: {exc}"
+            try:
+                await self.scheduler.shutdown()
+            except Exception as shutdown_exc:
+                scheduler_error += (
+                    f"; shutdown error: {type(shutdown_exc).__name__}: "
+                    f"{shutdown_exc}"
+                )
+
+            for task_id in task_ids:
+                task = self.task_manager.get_task(task_id)
+                if task is not None and task.status in {"QUEUED", "RUNNING"}:
+                    self.task_manager.block_task(
+                        task_id,
+                        reason=f"Scheduler aborted safely: {scheduler_error}",
+                    )
+
+            scheduler_snapshot = self.scheduler.snapshot(set(task_ids))
             monitor_snapshot = monitor.snapshot()
         finally:
             monitor.unbind_event_bus()
@@ -299,6 +323,7 @@ class BrainMissionRuntime:
             "plan": plan.to_dict(),
             "task_ids": list(task_ids),
             "scheduler": scheduler_snapshot,
+            "scheduler_error": scheduler_error,
             "monitor": monitor_snapshot,
             "replan_proposal": replan_proposal,
             "replan_error": replan_error,
