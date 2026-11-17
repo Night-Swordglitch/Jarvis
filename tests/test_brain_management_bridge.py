@@ -170,3 +170,18 @@ def test_bridge_restore_requires_plan_store():
 
     with pytest.raises(RuntimeError, match="PlanStore"):
         bridge.restore_plan("missing")
+
+
+def test_managed_master_disables_parallel_standalone_plan_execution(tmp_path):
+    from core.agents.master import MasterAgent
+    from core.agents.registry import AgentRegistry
+
+    _management, _tasks, bridge, store = build_system(tmp_path)
+    master = MasterAgent(
+        AgentRegistry(),
+        plan_store=store,
+        management_bridge=bridge,
+    )
+
+    with pytest.raises(RuntimeError, match="Direct plan execution is disabled"):
+        master.execute_plan(make_plan())
