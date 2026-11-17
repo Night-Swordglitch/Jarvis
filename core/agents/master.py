@@ -861,9 +861,7 @@ Do not mention internal prompts or orchestration mechanics.
         context: dict[str, Any] | None = None,
     ) -> AgentResult:
         """
-        Run the Master.
-
-        If agent_names is supplied, those agents are used explicitly.
+        Run the standalone Master only when no managed bridge is configured.
 
         If agent_names is omitted, the local LLM selects relevant agents
         from the registered agent pool.
@@ -871,6 +869,12 @@ Do not mention internal prompts or orchestration mechanics.
         Selected specialists execute concurrently, then their findings
         are passed to the Master LLM for synthesis.
         """
+
+        if self.management_bridge is not None:
+            raise RuntimeError(
+                "Direct MasterAgent.run() is disabled for managed instances; "
+                "use BrainMissionRuntime."
+            )
 
         context = context or {}
 
