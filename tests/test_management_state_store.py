@@ -207,3 +207,18 @@ def test_cyclic_persisted_dependencies_are_contained_without_startup_failure():
     assert graph.has_cycle() is False
     assert "second" in state.blocked_tasks
     assert state.metadata["dependency_restore_errors"]
+
+
+def test_orphaned_running_state_is_marked_for_restart_review(tmp_path):
+    state = ManagementState(
+        mission_id="orphaned-mission",
+        objective="Mission metadata was not saved",
+        status="RUNNING",
+    )
+    path = tmp_path / "orphaned.json"
+    ManagementStateStore(path).save(state)
+
+    restored = ManagementStateStore(path).load()
+
+    assert restored.status == "FAILED"
+    assert restored.metadata["restart_recovery"]["requires_review"] is True
