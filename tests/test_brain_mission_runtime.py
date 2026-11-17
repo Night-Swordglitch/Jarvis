@@ -209,3 +209,24 @@ def test_planning_failure_does_not_create_an_active_mission(tmp_path):
         asyncio.run(runtime.run("Research then summarize"))
 
     assert management.mission is None
+
+
+def test_synthesis_failure_does_not_mark_completed_tasks_as_a_completed_mission(tmp_path):
+    runtime, management, tasks, _agent, _store = build_runtime(tmp_path)
+
+    def failed_synthesis(objective, context, results):
+        return AgentResult(
+            agent_name="master",
+            task_id="master-synthesis",
+            status="FAILED",
+            summary="Synthesis service unavailable.",
+            errors=["Synthesis service unavailable."],
+        )
+
+    runtime.master.synthesize = failed_synthesis
+    result = asyncio.run(runtime.run("Research then summarize"))
+
+    assert all(tasks.get_task(task_id).status == "COMPLETED" for task_id in result["task_ids"])
+    assert result["mission_status"] == "FAILED"
+    assert management.mission.status == "FAILED"
+    assert result["management_decision"]["decision"] == "BLOCKED"
