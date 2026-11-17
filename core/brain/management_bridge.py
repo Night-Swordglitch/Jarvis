@@ -102,7 +102,7 @@ class BrainManagementBridge:
         return task_ids
 
     def restore_plan(self, plan_id: str) -> MissionPlan | None:
-        """Restore event tracking for a stored plan and its managed tasks."""
+        """Restore event tracking using a stored plan and currently loaded tasks."""
         if self.store is None:
             raise RuntimeError("A PlanStore is required to restore a plan.")
         plan = self.store.get(plan_id)
