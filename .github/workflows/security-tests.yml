@@ -26,6 +26,7 @@ jobs:
           tests/test_brain_planning.py
           tests/test_management_task_dependencies.py
           tests/test_brain_management_bridge.py
+          tests/test_brain_mission_runtime.py
       - name: Run Phase 8D to 8L contract tests
         shell: bash
         run: |
