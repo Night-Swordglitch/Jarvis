@@ -33,6 +33,7 @@ jobs:
           tests/test_management_task_dependencies.py
           tests/test_brain_management_bridge.py
           tests/test_brain_mission_runtime.py
+          tests/test_management_state_store.py
       - name: Run Phase 7 mission-management regression tests
         shell: bash
         run: |
