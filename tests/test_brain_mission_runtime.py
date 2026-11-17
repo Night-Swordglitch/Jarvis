@@ -286,3 +286,26 @@ def test_runtime_terminalizes_mission_when_scheduler_aborts(tmp_path):
     )
     assert agent.calls == []
     assert result["actions_executed"] == 0
+
+
+
+def test_runtime_rejects_a_scheduler_with_a_different_task_manager(tmp_path):
+    runtime, management, _tasks, _agent, _store = build_runtime(tmp_path)
+    other_state = ManagementState()
+    other_events = EventBus()
+    other_tasks = TaskManager(other_state, other_events)
+    other_scheduler = Scheduler(other_tasks, DependencyGraph())
+
+    with pytest.raises(ValueError, match="share one TaskManager"):
+        BrainMissionRuntime(runtime.master, management, other_scheduler)
+
+
+def test_runtime_rejects_a_scheduler_with_a_different_dependency_graph(tmp_path):
+    runtime, management, _tasks, _agent, _store = build_runtime(tmp_path)
+    other_scheduler = Scheduler(
+        management.task_manager,
+        DependencyGraph(),
+    )
+
+    with pytest.raises(ValueError, match="share one DependencyGraph"):
+        BrainMissionRuntime(runtime.master, management, other_scheduler)
