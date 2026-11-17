@@ -35,6 +35,20 @@ class BrainMissionRuntime:
             raise TypeError("management must be a ManagementManager.")
         if not isinstance(scheduler, Scheduler):
             raise TypeError("scheduler must be a Scheduler.")
+        if scheduler.task_manager is not management.task_manager:
+            raise ValueError(
+                "Scheduler and ManagementManager must share one TaskManager."
+            )
+        if scheduler.dependency_graph is not management.dependency_graph:
+            raise ValueError(
+                "Scheduler and ManagementManager must share one DependencyGraph."
+            )
+        bridge = getattr(master, "management_bridge", None)
+        if bridge is None or getattr(bridge, "management", None) is not management:
+            raise ValueError(
+                "MasterAgent must use a BrainManagementBridge bound to this "
+                "ManagementManager."
+            )
 
         self.master = master
         self.management = management
