@@ -733,6 +733,7 @@ class JarvisLive:
         self._management_dashboard_bridge.start()
         self._briefing_sent    = False          # morning briefing fires once per process
         self._sys_monitor      = SystemMonitor()  # persistent cooldown state
+        self._active_tool_calls = 0
         self._proactive        = ProactiveEngine()
         self._last_user_speech = time.monotonic()  # updated on every user utterance
         self._session_log: list[str] = []          # conversation turns for end-of-session summary
@@ -1364,7 +1365,7 @@ class JarvisLive:
 
         print(f"[JARVIS] 🔧 {name}  {args}")
         self.ui.set_state("THINKING")
-
+        self._active_tool_calls += 1
 
         if name == "save_memory":
             category = args.get("category", "notes")
@@ -1375,6 +1376,7 @@ class JarvisLive:
                 print(f"[Memory] 💾 save_memory: {category}/{key} = {value}")
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
+            self._active_tool_calls = max(0, self._active_tool_calls - 1)
             return types.FunctionResponse(
                 id=fc.id, name=name,
                 response={"result": "ok", "silent": True}
@@ -1764,6 +1766,7 @@ class JarvisLive:
         _sched = (self._action_registry.scheduling(name)
                   or self._plugin_registry.scheduling(name))
         _extra = {"scheduling": _sched} if _sched else {}
+        self._active_tool_calls = max(0, self._active_tool_calls - 1)
         return types.FunctionResponse(
             id=fc.id, name=name,
             response={"result": result},
@@ -2391,13 +2394,14 @@ class JarvisLive:
         """Background task: voice alerts when metrics exceed thresholds."""
         while True:
             await asyncio.sleep(10)
-            alert = await asyncio.to_thread(self._sys_monitor.check)
-            if not alert or not self.session or not self._awake:
+            if not self.session or not self._awake or self._active_tool_calls:
                 continue
-            # Don't interrupt an active conversation
             with self._speaking_lock:
                 speaking = self._is_speaking
-            if speaking or (time.monotonic() - self._last_user_speech) < 10:
+            if speaking or (time.monotonic() - self._last_user_speech) < 30:
+                continue
+            alert = await asyncio.to_thread(self._sys_monitor.check)
+            if not alert or self._active_tool_calls:
                 continue
             try:
                 await self.session.send_client_content(
@@ -2418,7 +2422,7 @@ class JarvisLive:
                 with self._speaking_lock:
                     speaking = self._is_speaking
                 recent_speech = (time.monotonic() - self._last_user_speech) < 30
-                if not speaking and not recent_speech:
+                if not speaking and not recent_speech and not self._active_tool_calls:
                     try:
                         alerts = await asyncio.to_thread(monitor_check_all)
                         memory = load_memory()
@@ -2451,7 +2455,7 @@ class JarvisLive:
         while True:
             await asyncio.sleep(60)   # evaluate once per minute
 
-            if not self.session or not self._awake:
+            if not self.session or not self._awake or self._active_tool_calls:
                 continue
 
             with self._speaking_lock:
@@ -2473,6 +2477,8 @@ class JarvisLive:
                     monitors     = monitors or None,
                     recent_turns = recent_turns or None,
                 )
+                if self._active_tool_calls:
+                    continue
                 await self.session.send_client_content(
                     turns={"role": "user", "parts": [{"text": prompt}]},
                     turn_complete=True,
