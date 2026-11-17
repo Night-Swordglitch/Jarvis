@@ -177,3 +177,35 @@ def test_mission_history_is_bounded_to_the_latest_100_records():
     history = state.metadata["mission_history"]
     assert len(history) == 100
     assert history[-1]["objective"] == "Mission 104"
+
+
+@pytest.mark.parametrize(
+    "invalid_plan, error, message",
+    [
+        ([], ValueError, "cannot be empty"),
+        ([None], TypeError, "must be a dictionary"),
+        ([{"id": "blank", "objective": "   "}], ValueError, "non-empty objective"),
+    ],
+)
+def test_invalid_planned_task_input_is_rejected_without_partial_creation(
+    invalid_plan, error, message
+):
+    manager, tasks, graph, state = build_manager()
+
+    with pytest.raises(error, match=message):
+        manager.create_planned_tasks(invalid_plan)
+
+    assert state.task_count() == 0
+    assert graph.tasks() == []
+    assert tasks.queued_tasks() == []
+
+
+def test_non_list_planned_task_input_is_rejected():
+    manager, _tasks, graph, state = build_manager()
+
+    with pytest.raises(TypeError, match="must be a list"):
+        manager.create_planned_tasks({"id": "not-a-list"})
+
+    assert state.task_count() == 0
+    assert graph.tasks() == []
+
