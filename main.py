@@ -1466,9 +1466,22 @@ class JarvisLive:
                             chr(10) + chr(10)
                             + "RECOVERY PLAN PROPOSAL (NOT EXECUTED):"
                             + chr(10)
-                            + f"- A revised plan was saved for review: {recovery_plan_id}"
+                            + f"- Plan ID: {recovery_plan_id}"
                             + chr(10)
-                            + "- Completed work was preserved; the proposal was not queued or run."
+                            + "- Completed work was preserved; this proposal was not queued or run."
+                        )
+                        for index, proposed_step in enumerate(
+                            recovery_proposal.get("plan", []),
+                            start=1,
+                        ):
+                            report += (
+                                chr(10)
+                                + f"{index}. {proposed_step.get('objective', 'Untitled step')}"
+                                + f" (agent: {proposed_step.get('agent_name', 'unassigned')})"
+                            )
+                        report += (
+                            chr(10)
+                            + "- To run it, explicitly request resume using this Plan ID."
                         )
                     elif mission_result.get("replan_error"):
                         report += (
