@@ -46,8 +46,12 @@ class MasterAgent(BaseAgent):
         self.registry = registry
         self.dispatcher = dispatcher or AgentDispatcher(registry)
         self.goal_planner = goal_planner or GoalPlanner(registry)
-        self.plan_store = plan_store or PlanStore(
-            Path(__file__).resolve().parents[2] / "memory" / "brain_plans.json"
+        self.plan_store = (
+            plan_store
+            if plan_store is not None
+            else PlanStore(
+                Path(__file__).resolve().parents[2] / "memory" / "brain_plans.json"
+            )
         )
         self.event_bus = event_bus
         if management_bridge is not None and not isinstance(
