@@ -85,6 +85,17 @@ class BrainManagementBridge:
             })
             self._task_to_step[task_id] = (plan.plan_id, step.step_id)
 
+        self.management.state.current_plan = [
+            {
+                "id": step.step_id,
+                "objective": step.objective,
+                "agent_name": step.agent_name,
+                "priority": step.priority,
+                "dependencies": list(step.depends_on),
+            }
+            for step in plan.steps
+        ]
+        self.management.state.status = "RUNNING"
         plan.status = "RUNNING"
         if self.store is not None:
             self.store.save(plan)
