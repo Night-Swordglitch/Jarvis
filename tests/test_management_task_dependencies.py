@@ -164,3 +164,16 @@ def test_task_cancellation_reports_the_actual_previous_status():
         "previous_status": "QUEUED",
     }]
     assert tasks.get_task(task.task_id).status == "CANCELLED"
+
+
+
+def test_mission_history_is_bounded_to_the_latest_100_records():
+    manager, _tasks, _graph, state = build_manager()
+
+    for index in range(105):
+        manager.fail_mission(f"Finish mission {index}")
+        manager.accept_mission(f"Mission {index + 1}")
+
+    history = state.metadata["mission_history"]
+    assert len(history) == 100
+    assert history[-1]["objective"] == "Mission 104"
