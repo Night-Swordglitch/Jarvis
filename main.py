@@ -111,6 +111,9 @@ from core.management.evidence import EvidenceStore
 from core.management.dashboard import DashboardProjector
 from core.management.dashboard_events import DashboardEventBridge
 from dashboard.management_api import ManagementDashboardAPI
+from core.brain.management_bridge import BrainManagementBridge
+from core.brain.runtime import BrainMissionRuntime
+from core.brain.store import PlanStore
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again (wake-word mode only).
@@ -494,11 +497,12 @@ TOOL_DECLARATIONS = [
     {
         "name": "master_delegate",
         "description": (
-            "Delegates a complex objective to the MARK-L Master Agent. "
-            "Use this when a task benefits from specialist-agent orchestration, "
-            "multi-step analysis, planning, research, or coordination. "
-            "The Master selects relevant specialist agents, dispatches them, "
-            "collects their results, and returns a synthesized result."
+            "Delegates a complex objective to the MARK-L planning brain. "
+            "Use this for multi-step work requiring goal decomposition, "
+            "specialist coordination, dependency-aware execution, and synthesis. "
+            "The Brain creates a validated plan; Management and the Scheduler "
+            "coordinate managed tasks; specialists return evidence for synthesis. "
+            "Requested actions still pass through the host approval boundary."
         ),
         "parameters": {
             "type": "OBJECT",
@@ -668,6 +672,13 @@ class JarvisLive:
             self._management_task_manager,
             self._management_dependency_graph,
         )
+        self._brain_plan_store = PlanStore(
+            BASE_DIR / "memory" / "brain_plans.json"
+        )
+        self._brain_management_bridge = BrainManagementBridge(
+            self._management_manager,
+            self._brain_plan_store,
+        )
 
         self._management_dashboard_projector = DashboardProjector(
             self._management_state,
@@ -767,6 +778,9 @@ class JarvisLive:
         self._master_agent = MasterAgent(
             self._agent_registry,
             self._agent_dispatcher,
+            plan_store=self._brain_plan_store,
+            event_bus=self._management_event_bus,
+            management_bridge=self._brain_management_bridge,
         )
 
         # Phase 3 integration diagnostic agent.
@@ -780,6 +794,11 @@ class JarvisLive:
         # Phase 4C.1 â€” social media specialist.
         self._agent_registry.register(SocialAgent())
         self._agent_registry.register(AnalyticsAgent())
+        self._brain_runtime = BrainMissionRuntime(
+            self._master_agent,
+            self._management_manager,
+            self._management_scheduler,
+        )
 
         print(
             "[Agents] Master online. "
@@ -1336,9 +1355,16 @@ class JarvisLive:
                     print(f"[Master] Objective: {objective}")
                     print("[Master] Coordinating specialist agents...")
 
-                    master_result = await self._master_agent.run(
+                    mission_result = await self._brain_runtime.run(
                         objective=objective,
                         context=context,
+                    )
+                    master_result = mission_result["master_result_object"]
+                    print(
+                        "[Management] Mission "
+                        f"{mission_result['mission_status']} | "
+                        f"Plan {mission_result['plan']['status']} | "
+                        f"Tasks {len(mission_result['task_ids'])}"
                     )
 
 
