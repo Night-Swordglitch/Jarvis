@@ -113,6 +113,10 @@ Constraints:
   change accounts, or perform other consequential actions.
 - Describe analysis, research, drafting, and preparation only.
 - Do not invent agents, capabilities, or available integrations.
+- If USER CONTEXT contains recovery_context, do not repeat completed_steps.
+- In recovery mode, focus on failed_steps and blocked_steps using a meaningfully
+  different or narrower safe approach; do not simply repeat a failed step.
+- Treat completed results as prior evidence, not as tasks to perform again.
 """.strip()
 
         try:
