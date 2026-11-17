@@ -1,4 +1,4 @@
-﻿"""Phase 8D — Action Execution Lifecycle contract test."""
+"""Phase 8D — Action Execution Lifecycle contract test."""
 
 from core.action_execution import (
     ActionExecution,
