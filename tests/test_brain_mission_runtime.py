@@ -118,6 +118,8 @@ def build_runtime(tmp_path, *, fail=False, fail_on=None, recovery_plan=None):
 
 def test_runtime_executes_plan_through_scheduler_and_dependency_gate(tmp_path):
     runtime, management, tasks, agent, store = build_runtime(tmp_path)
+    unrelated = tasks.create_task("Unrelated task from another mission")
+    runtime.scheduler.dependency_graph.add_task(unrelated.task_id)
 
     result = asyncio.run(runtime.run("Research then summarize", {"source": "test"}))
 
@@ -128,6 +130,8 @@ def test_runtime_executes_plan_through_scheduler_and_dependency_gate(tmp_path):
     assert len(agent.calls) == 2
     assert agent.calls[1].context["dependency_results"]
     assert all(tasks.get_task(task_id).status == "COMPLETED" for task_id in result["task_ids"])
+    assert tasks.get_task(unrelated.task_id).status == "QUEUED"
+    assert unrelated.task_id not in result["scheduler"]["task_states"]
     assert store.get(result["plan"]["plan_id"]).status == "COMPLETED"
     assert management.mission.status == "COMPLETED"
 
