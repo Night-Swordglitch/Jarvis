@@ -39,7 +39,7 @@ When a task fails or becomes blocked:
 
 - `PlanStore` persists Brain plans atomically in `memory/brain_plans.json`.
 - `ManagementStateStore` persists task groups, results, dependencies, mission metadata, and dashboard state atomically in `memory/management_state.json`.
-- Sensitive-looking keys (API keys, tokens, passwords, credentials, and similar fields) are redacted before the management snapshot is written.
+- Sensitive-looking keys (API keys, tokens, passwords, credentials, and similar fields) are redacted in both stores before snapshots are written.
 - On startup, tasks that were RUNNING are marked FAILED; queued tasks belonging to the interrupted mission are marked BLOCKED. Completed work is preserved.
 - The dependency graph and mission record are rebuilt from the saved state.
 - `BrainManagementBridge.restore_plan()` reconnects stored Brain plans to the restored task metadata.
