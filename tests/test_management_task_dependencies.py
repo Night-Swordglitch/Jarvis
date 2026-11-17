@@ -73,3 +73,36 @@ def test_duplicate_plan_alias_is_rejected_before_tasks_are_created():
 
     assert state.task_count() == 0
     assert graph.tasks() == []
+
+
+def test_management_decisions_ignore_failed_tasks_from_previous_missions():
+    manager, tasks, _graph, state = build_manager()
+    first_id = manager.create_planned_tasks([
+        {"id": "old", "objective": "Old mission work"}
+    ])[0]
+    tasks.start_task(first_id)
+    tasks.fail_task(first_id, "Old mission failure")
+    manager.fail_mission("First mission ended unsuccessfully")
+
+    manager.accept_mission("A new independent mission")
+    new_id = manager.create_planned_tasks([
+        {"id": "new", "objective": "New mission work"}
+    ])[0]
+
+    decision = manager.evaluate()
+    assert decision.decision.value == "CONTINUE"
+    assert tasks.get_task(new_id).metadata["mission_id"] == manager.mission.mission_id
+    assert tasks.get_task(first_id).metadata["mission_id"] != manager.mission.mission_id
+
+
+def test_fail_mission_is_terminal_and_allows_a_new_mission():
+    manager, _tasks, _graph, _state = build_manager()
+
+    decision = manager.fail_mission("Stop this mission")
+    assert decision.decision.value == "BLOCKED"
+    assert manager.mission.status == "FAILED"
+    assert manager.running is False
+
+    next_mission = manager.accept_mission("Next mission")
+    assert next_mission.status == "CREATED"
+    assert manager.running is True
