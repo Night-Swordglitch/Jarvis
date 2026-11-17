@@ -1,5 +1,7 @@
 """End-to-end tests for the Brain -> Management -> Scheduler runtime."""
 
+import asyncio
+
 import pytest
 
 from core.agents import AgentRegistry, BaseAgent, AgentResult, MasterAgent
@@ -106,11 +108,10 @@ def build_runtime(tmp_path, *, fail=False):
     return runtime, management, tasks, agent, store
 
 
-@pytest.mark.asyncio
-async def test_runtime_executes_plan_through_scheduler_and_dependency_gate(tmp_path):
+def test_runtime_executes_plan_through_scheduler_and_dependency_gate(tmp_path):
     runtime, management, tasks, agent, store = build_runtime(tmp_path)
 
-    result = await runtime.run("Research then summarize", {"source": "test"})
+    result = asyncio.run(runtime.run("Research then summarize", {"source": "test"}))
 
     assert result["mission_status"] == "COMPLETED"
     assert result["plan"]["status"] == "COMPLETED"
@@ -123,11 +124,10 @@ async def test_runtime_executes_plan_through_scheduler_and_dependency_gate(tmp_p
     assert management.mission.status == "COMPLETED"
 
 
-@pytest.mark.asyncio
-async def test_runtime_failure_blocks_dependents_without_automatic_retry(tmp_path):
+def test_runtime_failure_blocks_dependents_without_automatic_retry(tmp_path):
     runtime, management, tasks, agent, _store = build_runtime(tmp_path, fail=True)
 
-    result = await runtime.run("Research then summarize")
+    result = asyncio.run(runtime.run("Research then summarize"))
 
     assert len(agent.calls) == 1
     assert result["mission_status"] == "FAILED"
@@ -137,12 +137,11 @@ async def test_runtime_failure_blocks_dependents_without_automatic_retry(tmp_pat
     assert result["actions_executed"] == 0
 
 
-@pytest.mark.asyncio
-async def test_planning_failure_does_not_create_an_active_mission(tmp_path):
+def test_planning_failure_does_not_create_an_active_mission(tmp_path):
     runtime, management, _tasks, _agent, _store = build_runtime(tmp_path)
     runtime.master.goal_planner = StaticPlanner(error=RuntimeError("planner offline"))
 
     with pytest.raises(RuntimeError, match="planner offline"):
-        await runtime.run("Research then summarize")
+        asyncio.run(runtime.run("Research then summarize"))
 
     assert management.mission is None
