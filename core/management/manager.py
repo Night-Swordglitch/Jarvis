@@ -110,6 +110,15 @@ class ManagementManager:
         }:
             raise RuntimeError("A mission is already active")
 
+        if self._mission is not None:
+            history = self.state.metadata.setdefault("mission_history", [])
+            if not any(
+                item.get("mission_id") == self._mission.mission_id
+                for item in history
+                if isinstance(item, dict)
+            ):
+                history.append(self._mission.to_dict())
+
         self._mission = Mission(
             objective=objective,
             context=context or {},
