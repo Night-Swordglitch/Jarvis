@@ -121,3 +121,25 @@ def test_completed_tasks_from_previous_mission_do_not_complete_new_mission():
     decision = manager.evaluate()
 
     assert decision.decision.value == "WAIT"
+
+
+
+def test_dependency_cycle_is_rejected_before_any_tasks_are_created():
+    manager, tasks, graph, state = build_manager()
+
+    with pytest.raises(ValueError, match="dependencies contain a cycle"):
+        manager.create_planned_tasks([
+            {
+                "id": "research",
+                "objective": "Research the topic",
+                "dependencies": ["summary"],
+            },
+            {
+                "id": "summary",
+                "objective": "Summarise the topic",
+                "dependencies": ["research"],
+            },
+        ])
+
+    assert state.task_count() == 0
+    assert graph.tasks() == []
