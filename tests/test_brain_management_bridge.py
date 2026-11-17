@@ -232,3 +232,29 @@ def test_managed_master_disables_parallel_direct_agent_dispatch(tmp_path):
 
     with pytest.raises(RuntimeError, match="Direct MasterAgent.run"):
         asyncio.run(master.run("Do not bypass managed execution"))
+
+def test_bridge_redacts_sensitive_values_from_live_and_restored_plan_results(tmp_path):
+    management, tasks, bridge, store = build_system(tmp_path)
+    plan = make_plan()
+    management.accept_mission(plan.objective)
+    research_id, _summary_id = bridge.submit(plan)
+
+    tasks.start_task(research_id)
+    tasks.complete_task(research_id, {
+        "finding": "Evidence collected",
+        "api_key": "do-not-expose",
+        "nested": {"accessToken": "also-secret"},
+    })
+
+    assert plan.steps[0].result == {
+        "finding": "Evidence collected",
+        "api_key": "[REDACTED]",
+        "nested": {"accessToken": "[REDACTED]"},
+    }
+    assert store.get(plan.plan_id).steps[0].result == plan.steps[0].result
+
+    bridge.close()
+    restored_bridge = BrainManagementBridge(management, store)
+    restored = restored_bridge.restore_plan(plan.plan_id)
+    assert restored.steps[0].result == plan.steps[0].result
+
