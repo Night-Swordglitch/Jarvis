@@ -73,24 +73,29 @@ class Scheduler:
     # Scheduling
     # ------------------------------------------------------------------
 
-    def ready_tasks(self) -> list[str]:
-        """Return tasks currently eligible to run."""
+    def ready_tasks(self, task_ids: set[str] | None = None) -> list[str]:
+        """Return eligible tasks, optionally restricted to one mission scope."""
         states = self._task_states()
-        return self.dependency_graph.ready_tasks(states)
+        ready = self.dependency_graph.ready_tasks(states)
+        return self._in_scope(ready, task_ids)
 
-    def waiting_tasks(self) -> list[str]:
+    def waiting_tasks(self, task_ids: set[str] | None = None) -> list[str]:
         """Return queued tasks waiting on dependencies."""
         states = self._task_states()
-        return self.dependency_graph.waiting_tasks(states)
+        waiting = self.dependency_graph.waiting_tasks(states)
+        return self._in_scope(waiting, task_ids)
 
-    def blocked_tasks(self) -> list[str]:
+    def blocked_tasks(self, task_ids: set[str] | None = None) -> list[str]:
         """Return queued tasks whose dependencies failed."""
         states = self._task_states()
-        return self.dependency_graph.blocked_tasks(states)
+        blocked = self.dependency_graph.blocked_tasks(states)
+        return self._in_scope(blocked, task_ids)
 
     async def run(
         self,
         runner: TaskRunner,
+        *,
+        task_ids: set[str] | list[str] | tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
         """Run all schedulable tasks until the queue is exhausted.
 
@@ -107,31 +112,32 @@ class Scheduler:
         """
         if not callable(runner):
             raise TypeError("runner must be callable")
+        scope = self._normalize_scope(task_ids)
 
         self._cancel_requested = False
 
         while True:
-            self._block_failed_dependents()
+            self._block_failed_dependents(scope)
 
             if self._cancel_requested:
-                self._cancel_queued_tasks()
+                self._cancel_queued_tasks(scope)
 
-            self._launch_available(runner)
+            self._launch_available(runner, scope)
 
             if not self._running:
-                if not self.ready_tasks():
+                if not self.ready_tasks(scope):
                     break
 
             if self._running:
                 await self._wait_for_progress()
                 continue
 
-            # Nothing is running and nothing is ready.
+            # Nothing in this scope is running or ready.
             break
 
-        self._block_failed_dependents()
+        self._block_failed_dependents(scope)
 
-        return self.snapshot()
+        return self.snapshot(scope)
 
     def cancel(self) -> None:
         """Request scheduler cancellation.
@@ -162,7 +168,11 @@ class Scheduler:
     # Worker management
     # ------------------------------------------------------------------
 
-    def _launch_available(self, runner: TaskRunner) -> None:
+    def _launch_available(
+        self,
+        runner: TaskRunner,
+        task_ids: set[str] | None = None,
+    ) -> None:
         if self._cancel_requested:
             return
 
@@ -171,7 +181,7 @@ class Scheduler:
         if capacity <= 0:
             return
 
-        for task_id in self.ready_tasks():
+        for task_id in self.ready_tasks(task_ids):
             if capacity <= 0:
                 break
 
@@ -263,10 +273,16 @@ class Scheduler:
     # Dependency propagation
     # ------------------------------------------------------------------
 
-    def _block_failed_dependents(self) -> None:
+    def _block_failed_dependents(
+        self,
+        task_ids: set[str] | None = None,
+    ) -> None:
         states = self._task_states()
 
-        for task_id in self.dependency_graph.blocked_tasks(states):
+        for task_id in self._in_scope(
+            self.dependency_graph.blocked_tasks(states),
+            task_ids,
+        ):
             failed = self.dependency_graph.failed_dependencies(
                 task_id,
                 states,
@@ -285,11 +301,16 @@ class Scheduler:
                 reason=reason,
             )
 
-    def _cancel_queued_tasks(self) -> None:
+    def _cancel_queued_tasks(
+        self,
+        task_ids: set[str] | None = None,
+    ) -> None:
         states = self._task_states()
 
         for task_id, task in states.items():
-            if task.status.upper() == "QUEUED":
+            if task.status.upper() == "QUEUED" and (
+                task_ids is None or task_id in task_ids
+            ):
                 self.task_manager.cancel_task(task_id)
 
     # ------------------------------------------------------------------
@@ -307,22 +328,59 @@ class Scheduler:
 
         return states
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(
+        self,
+        task_ids: set[str] | None = None,
+    ) -> dict[str, Any]:
         states = self._task_states()
+        scoped_states = {
+            task_id: task
+            for task_id, task in states.items()
+            if task_ids is None or task_id in task_ids
+        }
 
         return {
             "max_workers": self.max_workers,
-            "running": sorted(self._running),
-            "ready": self.dependency_graph.ready_tasks(states),
-            "waiting": self.dependency_graph.waiting_tasks(states),
+            "running": self._in_scope(sorted(self._running), task_ids),
+            "ready": self._in_scope(
+                self.dependency_graph.ready_tasks(states), task_ids
+            ),
+            "waiting": self._in_scope(
+                self.dependency_graph.waiting_tasks(states), task_ids
+            ),
             "blocked": sorted(
                 task_id
-                for task_id, task in states.items()
+                for task_id, task in scoped_states.items()
                 if task.status.upper() == "BLOCKED"
             ),
             "cancelled": self._cancel_requested,
             "task_states": {
                 task_id: task.status
-                for task_id, task in sorted(states.items())
+                for task_id, task in sorted(scoped_states.items())
             },
         }
+
+    def _normalize_scope(
+        self,
+        task_ids: set[str] | list[str] | tuple[str, ...] | None,
+    ) -> set[str] | None:
+        if task_ids is None:
+            return None
+        if not isinstance(task_ids, (set, list, tuple)):
+            raise TypeError("task_ids must be a set, list, tuple, or None.")
+        scope = set(task_ids)
+        if any(not isinstance(task_id, str) or not task_id.strip() for task_id in scope):
+            raise ValueError("task_ids must contain non-empty strings.")
+        unknown = scope - set(self.dependency_graph.tasks())
+        if unknown:
+            raise KeyError("Unknown scheduler task IDs: " + ", ".join(sorted(unknown)))
+        return scope
+
+    @staticmethod
+    def _in_scope(
+        values: list[str],
+        task_ids: set[str] | None,
+    ) -> list[str]:
+        if task_ids is None:
+            return values
+        return [value for value in values if value in task_ids]
