@@ -44,7 +44,7 @@ When a task fails or becomes blocked:
 - The dependency graph and mission record are rebuilt from the saved state.
 - `BrainManagementBridge.restore_plan()` reconnects stored Brain plans to the restored task metadata.
 
-Interrupted work is **not resumed automatically**. A user-approved resume/recovery flow is still future work.
+Interrupted work is **not resumed automatically**. A saved recovery proposal can be run only through `BrainMissionRuntime.run_saved_plan(plan_id)` (exposed by the master tool's `plan_id` argument) when the user explicitly requests it. The saved plan is revalidated against registered specialists, completed work is carried forward as context, and the proposal cannot be accepted twice.
 
 ## Regression checks
 
