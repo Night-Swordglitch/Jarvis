@@ -1,4 +1,4 @@
-﻿from core.agent_action_executor import AgentActionExecutor
+from core.agent_action_executor import AgentActionExecutor
 from core.permission_manager import PermissionDecision, PermissionManager
 from core.permission_bridge import PermissionBridge
 from core.permissions import CapabilityRequest
