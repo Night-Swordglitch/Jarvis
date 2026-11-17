@@ -91,6 +91,9 @@ class MasterAgent(BaseAgent):
             raise RuntimeError(
                 "No BrainManagementBridge is configured for this MasterAgent."
             )
+        if not isinstance(plan, MissionPlan):
+            raise TypeError("plan must be a MissionPlan.")
+        plan.validate_agents(set(self.available_agents))
         return self.management_bridge.submit(plan)
 
     def load_plan(self, plan_id: str) -> MissionPlan | None:
