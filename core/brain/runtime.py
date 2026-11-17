@@ -46,7 +46,7 @@ class BrainMissionRuntime:
         objective: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Plan, queue, and execute one mission without automatic retries."""
+        """Plan and execute one mission; failures yield reviewable recovery proposals."""
         objective = str(objective).strip()
         if not objective:
             raise ValueError("Mission objective cannot be empty.")
@@ -122,9 +122,11 @@ class BrainMissionRuntime:
                 )
             return result.to_dict()
 
-        scheduler_snapshot = await self.scheduler.run(run_specialist)
-        monitor_snapshot = monitor.snapshot()
-        monitor.unbind_event_bus()
+        try:
+            scheduler_snapshot = await self.scheduler.run(run_specialist)
+            monitor_snapshot = monitor.snapshot()
+        finally:
+            monitor.unbind_event_bus()
 
         # A failure produces a persisted proposal only. It is not queued,
         # retried, or executed automatically. Completed work is supplied as
@@ -265,22 +267,26 @@ class BrainMissionRuntime:
         ]
 
         mission_tasks = [self.task_manager.get_task(task_id) for task_id in task_ids]
-        if mission_tasks and all(
+        tasks_completed = bool(mission_tasks) and all(
             task is not None and task.status == "COMPLETED"
             for task in mission_tasks
-        ):
+        )
+        if tasks_completed and master_result.success:
             decision = self.management.complete_mission()
             review_decision = decision
         else:
             review_decision = self.management.evaluate()
-            if any(
+            task_failure = any(
                 task is not None and task.status in {"FAILED", "BLOCKED", "CANCELLED"}
                 for task in mission_tasks
-            ):
-                decision = self.management.fail_mission(
+            )
+            if task_failure or not master_result.success:
+                failure_reason = (
                     review_decision.user_update
-                    or "The mission could not complete all planned tasks."
+                    or master_result.summary
+                    or "The mission could not produce a verified synthesis."
                 )
+                decision = self.management.fail_mission(failure_reason)
             else:
                 decision = review_decision
 
