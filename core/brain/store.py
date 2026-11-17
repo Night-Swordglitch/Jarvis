@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from threading import RLock
 
@@ -23,7 +24,7 @@ class PlanStore:
             raise TypeError("plan must be a MissionPlan.")
         with self._lock:
             data = self._read()
-            data[plan.plan_id] = plan.to_dict()
+            data[plan.plan_id] = self._redact(plan.to_dict())
             self._write(data)
         return plan
 
@@ -63,8 +64,38 @@ class PlanStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         with temporary.open("w", encoding="utf-8") as stream:
-            json.dump(data, stream, indent=2, ensure_ascii=False)
-        temporary.replace(self.path)
+            json.dump(data, stream, indent=2, ensure_ascii=False, default=str)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, self.path)
+
+    @staticmethod
+    def _redact(value):
+        sensitive_parts = (
+            "password",
+            "secret",
+            "token",
+            "api_key",
+            "apikey",
+            "authorization",
+            "credential",
+            "private_key",
+        )
+        if isinstance(value, dict):
+            result = {}
+            for key, item in value.items():
+                normalized = str(key).lower().replace("-", "_")
+                result[key] = (
+                    "[REDACTED]"
+                    if any(part in normalized for part in sensitive_parts)
+                    else PlanStore._redact(item)
+                )
+            return result
+        if isinstance(value, list):
+            return [PlanStore._redact(item) for item in value]
+        if isinstance(value, tuple):
+            return [PlanStore._redact(item) for item in value]
+        return value
 
     def __len__(self) -> int:
         with self._lock:
