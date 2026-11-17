@@ -77,7 +77,12 @@ class MasterAgent(BaseAgent):
         plan: MissionPlan,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Dispatch the plan's specialist analysis steps in dependency order."""
+        """Dispatch a standalone plan only when no managed bridge is configured."""
+        if self.management_bridge is not None:
+            raise RuntimeError(
+                "Direct plan execution is disabled for managed MasterAgent instances; "
+                "submit through queue_plan() and BrainMissionRuntime instead."
+            )
         return self.plan_executor.execute(plan, context=context)
 
     def queue_plan(self, plan: MissionPlan) -> list[str]:
