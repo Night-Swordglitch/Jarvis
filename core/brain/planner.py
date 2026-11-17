@@ -312,7 +312,7 @@ class PlanExecutor:
                 if self.store is not None:
                     self.store.save(plan)
                 self._publish(
-                    "BRAIN_STEP_COMPLETED" if result.success else "BRAIN_STEP_FAILED",
+                    "BRAIN_STEP_COMPLETED" if result.status.upper() == "SUCCESS" else "BRAIN_STEP_FAILED",
                     {
                         "plan_id": plan.plan_id,
                         "step_id": step.step_id,
