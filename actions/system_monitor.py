@@ -20,7 +20,7 @@ DEFAULT_THRESHOLDS = {
 _COOLDOWN   = 900
 _CPU_STREAK = 3
 
-# ── NVML DLL cache (Windows: nvml.dll, Linux: libnvidia-ml.so.1) ─────────────
+# Stateful monitoring with a global alert cooldown.
 _nvml_lib: object = None
 _nvml_ok:  object = None   # None=untested  True=works  False=unavailable
 
@@ -190,5 +190,5 @@ class SystemMonitor:
         return (
             "[SYSTEM_ALERT] Elevated system resource readings: "
             f"{metrics}. Briefly inform the user without interrupting an active task. "
-            "Do not recommend closing applications, stopping processes, or changing settings."
+            "Keep the notice informational and non-disruptive."
         )
