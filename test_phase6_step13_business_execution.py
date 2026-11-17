@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 
 from core.agents.base import BaseAgent
 from core.agents.dispatcher import AgentDispatcher
