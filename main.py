@@ -1444,8 +1444,13 @@ class JarvisLive:
                             )
                         )
 
+                    delegation_status = (
+                        "COMPLETE"
+                        if mission_result["mission_status"] == "COMPLETED"
+                        else "NEEDS REVIEW"
+                    )
                     result = (
-                        "MASTER DELEGATION COMPLETE." + chr(10) + chr(10)
+                        f"MASTER DELEGATION {delegation_status}." + chr(10) + chr(10)
                         + "You now have the final synthesized report from the Master Agent." + chr(10) + chr(10)
                         + "FINAL REPORT:" + chr(10) + report + chr(10) + chr(10)
                         + "IMPORTANT: Do not call master_delegate again for this request. "
