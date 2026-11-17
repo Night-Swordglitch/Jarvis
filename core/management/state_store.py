@@ -62,11 +62,10 @@ class ManagementStateStore:
                 task.error = self.INTERRUPTED_REASON
                 state.failed_tasks[task.task_id] = task
 
-            interrupted_queued = [
-                task
-                for task in state.queued_tasks.values()
-                if task.metadata.get("mission_id") == state.mission_id
-            ]
+            # No queued task is resumed after a process restart. This includes
+            # tasks from older missions: a stale queue must never become
+            # executable merely because a later scheduler starts globally.
+            interrupted_queued = list(state.queued_tasks.values())
             for task in interrupted_queued:
                 state.queued_tasks.pop(task.task_id, None)
                 task.status = "BLOCKED"
@@ -172,7 +171,24 @@ class ManagementStateStore:
                         )
                         state.blocked_tasks[task.task_id] = task
                     continue
-                graph.add_dependency(task.task_id, dependency_id)
+                try:
+                    graph.add_dependency(task.task_id, dependency_id)
+                except ValueError as exc:
+                    # Persisted dependency data is untrusted on restart. A
+                    # cycle must not prevent the application from starting or
+                    # leave queued work eligible for execution.
+                    if task.status == "QUEUED":
+                        state.queued_tasks.pop(task.task_id, None)
+                        task.status = "BLOCKED"
+                        task.error = f"Invalid persisted dependency graph: {exc}"
+                        state.blocked_tasks[task.task_id] = task
+                    state.metadata.setdefault(
+                        "dependency_restore_errors", []
+                    ).append({
+                        "task_id": task.task_id,
+                        "dependency_id": dependency_id,
+                        "error": str(exc),
+                    })
 
     def close(self) -> None:
         """Unsubscribe from lifecycle events and flush the latest state."""
