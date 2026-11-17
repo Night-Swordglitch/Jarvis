@@ -211,21 +211,41 @@ class ManagementManager:
             aliases[alias] = ""
             normalized_items.append((alias, item))
 
+        dependency_map: dict[str, list[str]] = {}
         for alias, item in normalized_items:
             dependencies = item.get("dependencies", []) or []
             if not isinstance(dependencies, list):
                 raise TypeError(f"Dependencies for task '{alias}' must be a list.")
+            normalized_dependencies = list(dict.fromkeys(
+                str(dep).strip() for dep in dependencies
+            ))
             unknown = [
-                str(dep).strip()
-                for dep in dependencies
-                if str(dep).strip() not in aliases
+                dep for dep in normalized_dependencies if dep not in aliases
             ]
             if unknown:
                 raise ValueError(
                     f"Task '{alias}' references unknown dependencies: {unknown}"
                 )
-            if alias in [str(dep).strip() for dep in dependencies]:
+            if alias in normalized_dependencies:
                 raise ValueError(f"Task '{alias}' cannot depend on itself.")
+            dependency_map[alias] = normalized_dependencies
+
+        # Validate the complete graph before creating any persistent tasks.
+        remaining = {
+            alias: set(dependencies)
+            for alias, dependencies in dependency_map.items()
+        }
+        completed_aliases: set[str] = set()
+        while remaining:
+            ready = [
+                alias for alias, dependencies in remaining.items()
+                if dependencies.issubset(completed_aliases)
+            ]
+            if not ready:
+                raise ValueError("Planned task dependencies contain a cycle.")
+            for alias in ready:
+                completed_aliases.add(alias)
+                remaining.pop(alias)
 
         # Create all tasks first so every dependency ID can be resolved.
         for alias, item in normalized_items:
@@ -252,8 +272,8 @@ class ManagementManager:
         for alias, item in normalized_items:
             task_id = aliases[alias]
             dependency_ids = [
-                aliases[str(dep).strip()]
-                for dep in (item.get("dependencies", []) or [])
+                aliases[dependency]
+                for dependency in dependency_map[alias]
             ]
             task = self.task_manager.get_task(task_id)
             if task is None:
