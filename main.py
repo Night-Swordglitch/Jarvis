@@ -107,6 +107,7 @@ from core.task_manager import TaskManager
 from core.dependency_graph import DependencyGraph
 from core.scheduler import Scheduler
 from core.management.manager import ManagementManager
+from core.management.state_store import ManagementStateStore
 from core.management.evidence import EvidenceStore
 from core.management.dashboard import DashboardProjector
 from core.management.dashboard_events import DashboardEventBridge
@@ -653,13 +654,20 @@ class JarvisLive:
         # â”€â”€ MARK-L management runtime â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         # Single source of truth for missions, tasks, dependencies,
         # scheduling, evidence, and management decisions.
-        self._management_state = ManagementState()
+        self._management_state_store = ManagementStateStore(
+            BASE_DIR / "memory" / "management_state.json"
+        )
+        self._management_state = self._management_state_store.load()
         self._management_event_bus = EventBus()
         self._management_task_manager = TaskManager(
             self._management_state,
             self._management_event_bus,
         )
         self._management_dependency_graph = DependencyGraph()
+        self._management_state_store.restore_dependency_graph(
+            self._management_state,
+            self._management_dependency_graph,
+        )
         self._management_scheduler = Scheduler(
             self._management_task_manager,
             self._management_dependency_graph,
@@ -671,6 +679,10 @@ class JarvisLive:
             self._management_event_bus,
             self._management_task_manager,
             self._management_dependency_graph,
+        )
+        self._management_state_store.bind(
+            self._management_state,
+            self._management_event_bus,
         )
         self._brain_plan_store = PlanStore(
             BASE_DIR / "memory" / "brain_plans.json"
@@ -794,6 +806,20 @@ class JarvisLive:
         # Phase 4C.1 â€” social media specialist.
         self._agent_registry.register(SocialAgent())
         self._agent_registry.register(AnalyticsAgent())
+
+        # Reattach stored plans to task state restored from disk. Interrupted
+        # work is marked failed/blocked by ManagementStateStore and is never
+        # resumed automatically.
+        for saved_plan in self._master_agent.list_plans():
+            if saved_plan.status in {"RUNNING", "PARTIAL", "FAILED"}:
+                try:
+                    self._brain_management_bridge.restore_plan(saved_plan.plan_id)
+                except Exception as exc:
+                    print(
+                        "[Brain] Could not restore plan tracking for "
+                        f"{saved_plan.plan_id}: {exc}"
+                    )
+
         self._brain_runtime = BrainMissionRuntime(
             self._master_agent,
             self._management_manager,
