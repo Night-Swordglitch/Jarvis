@@ -15,6 +15,7 @@ from typing import Any
 
 from core.agents.result import AgentResult
 from core.agents.task import AgentTask
+from core.events import Event
 from core.management.manager import ManagementManager
 from core.scheduler import Scheduler
 from core.mission_monitor import MissionMonitor
@@ -31,6 +32,8 @@ class BrainMissionRuntime:
             raise TypeError("master must provide queue_plan().")
         if not callable(getattr(master, "synthesize", None)):
             raise TypeError("master must provide synthesize().")
+        if not callable(getattr(master, "load_plan", None)):
+            raise TypeError("master must provide load_plan().")
         if not isinstance(management, ManagementManager):
             raise TypeError("management must be a ManagementManager.")
         if not isinstance(scheduler, Scheduler):
@@ -75,18 +78,88 @@ class BrainMissionRuntime:
             objective,
             base_context,
         )
+        return await self._execute_plan(plan, base_context)
+
+    async def run_saved_plan(
+        self,
+        plan_id: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run a saved recovery proposal only after an explicit plan-ID request."""
+        if not isinstance(plan_id, str) or not plan_id.strip():
+            raise ValueError("plan_id must be a non-empty string.")
+        if context is not None and not isinstance(context, dict):
+            raise TypeError("context must be a dictionary.")
+
+        plan_id = plan_id.strip()
+        plan = self.master.load_plan(plan_id)
+        if plan is None:
+            raise KeyError(f"Saved plan '{plan_id}' was not found.")
+        if plan.status != "READY":
+            raise ValueError("Only a READY saved recovery plan can be resumed.")
+
+        proposals = self.management.state.metadata.get("replan_proposals", {})
+        proposal = proposals.get(plan_id) if isinstance(proposals, dict) else None
+        if not isinstance(proposal, dict) or proposal.get("status") != "PROPOSED":
+            raise ValueError(
+                "This plan is not an unaccepted recovery proposal."
+            )
+
+        previous_mission_id = proposal.get("mission_id")
+        if not isinstance(previous_mission_id, str) or not previous_mission_id:
+            raise ValueError("Recovery proposal has no source mission.")
+
+        completed_work = [
+            task.to_dict()
+            for task in self.task_manager.state.completed_tasks.values()
+            if task.metadata.get("mission_id") == previous_mission_id
+        ]
+        base_context = deepcopy(context or {})
+        base_context["resumed_from_plan_id"] = plan_id
+        base_context["recovery_context"] = {
+            "previous_mission_id": previous_mission_id,
+            "completed_steps": completed_work,
+            "failed_task_ids": list(proposal.get("failed_task_ids", [])),
+            "user_approved_resume": True,
+            "do_not_repeat_completed_work": True,
+        }
+        return await self._execute_plan(
+            plan,
+            base_context,
+            resume_proposal=proposal,
+        )
+
+    async def _execute_plan(
+        self,
+        plan: Any,
+        base_context: dict[str, Any],
+        *,
+        resume_proposal: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        objective = plan.objective
         mission = self.management.accept_mission(
             objective,
             context=base_context,
         )
 
         try:
-            task_ids = self.master.queue_plan(plan)
+            task_ids = self.master.queue_plan(plan, context=base_context)
         except Exception as exc:
             self.management.fail_mission(
                 f"Plan submission failed safely: {exc}"
             )
             raise
+
+        if resume_proposal is not None:
+            resume_proposal["status"] = "ACCEPTED"
+            resume_proposal["accepted_by_mission_id"] = mission.mission_id
+            self.management.event_bus.publish(Event(
+                "BRAIN_REPLAN_ACCEPTED",
+                {
+                    "plan_id": plan.plan_id,
+                    "mission_id": mission.mission_id,
+                },
+            ))
 
         monitor = MissionMonitor(mission.mission_id)
         monitor.bind_event_bus(self.management.event_bus)
@@ -273,6 +346,17 @@ class BrainMissionRuntime:
                     ]
                     self.master.plan_store.save(recovery_plan)
                     replan_proposal = proposal.to_dict()
+                    replan_proposal["status"] = "PROPOSED"
+                    self.management.state.metadata.setdefault(
+                        "replan_proposals", {}
+                    )[recovery_plan.plan_id] = replan_proposal
+                    self.management.event_bus.publish(Event(
+                        "BRAIN_REPLAN_PROPOSED",
+                        {
+                            "plan_id": recovery_plan.plan_id,
+                            "mission_id": mission.mission_id,
+                        },
+                    ))
             except Exception as exc:
                 replan_error = str(exc)
 
@@ -330,6 +414,22 @@ class BrainMissionRuntime:
                 decision = self.management.fail_mission(failure_reason)
             else:
                 decision = review_decision
+
+        if resume_proposal is not None:
+            resume_proposal["status"] = (
+                "COMPLETED" if mission.status == "COMPLETED"
+                else "FAILED" if mission.status == "FAILED"
+                else "ACTIVE"
+            )
+            resume_proposal["finished_mission_id"] = mission.mission_id
+            self.management.event_bus.publish(Event(
+                "BRAIN_REPLAN_FINISHED",
+                {
+                    "plan_id": plan.plan_id,
+                    "mission_id": mission.mission_id,
+                    "status": resume_proposal["status"],
+                },
+            ))
 
         return {
             "mission_id": mission.mission_id,
