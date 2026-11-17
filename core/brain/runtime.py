@@ -177,6 +177,7 @@ class BrainMissionRuntime:
             "management_review": review_decision.to_dict(),
             "management_decision": decision.to_dict(),
             "master_result": master_result.to_dict(),
+            "master_result_object": master_result,
             "action_requests": list(master_result.actions_requested),
             "actions_executed": 0,
         }
