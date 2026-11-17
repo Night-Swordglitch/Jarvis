@@ -1,4 +1,4 @@
-﻿from core.management import (
+from core.management import (
     Mission,
     ManagementState,
     TaskState,
