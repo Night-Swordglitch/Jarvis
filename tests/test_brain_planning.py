@@ -286,3 +286,38 @@ def test_plan_store_redacts_sensitive_result_fields(tmp_path):
     assert saved_result["api_key"] == "[REDACTED]"
     assert saved_result["nested"]["refresh_token"] == "[REDACTED]"
     assert saved_result["finding"] == "public detail"
+
+
+
+def test_partial_agent_result_does_not_complete_or_unlock_dependent_step():
+    class PartialAgent(RecordingAgent):
+        def run(self, task):
+            self.calls.append(task)
+            return AgentResult(
+                agent_name=self.name,
+                task_id=task.task_id,
+                status="PARTIAL",
+                summary="Only part of the requested work was completed.",
+            )
+
+    agent = PartialAgent()
+    registry = registry_with_agent(agent)
+    plan = MissionPlan(
+        objective="Complete both steps",
+        steps=[
+            PlanStep(
+                "followup",
+                "Continue after complete research",
+                "research_agent",
+                depends_on=["research"],
+            ),
+            PlanStep("research", "Research the topic", "research_agent"),
+        ],
+    )
+
+    result = PlanExecutor(registry).execute(plan)
+
+    assert plan.steps[1].status == "FAILED"
+    assert plan.steps[0].status == "BLOCKED"
+    assert len(agent.calls) == 1
+    assert result["status"] == "FAILED"
